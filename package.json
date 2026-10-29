@@ -1,0 +1,30 @@
+{
+  "name": "vibhillion-ai",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "student": "npm run --prefix apps/student start",
+    "student:android": "npm run --prefix apps/student android",
+    "student:web": "npm run --prefix apps/student web",
+    "admin": "npm run --prefix apps/admin dev",
+    "admin:build": "npm run --prefix apps/admin build",
+    "build:shared": "npm run --prefix packages/shared build",
+    "build": "npm run --prefix apps/admin build",
+    "test": "npm run --prefix packages/shared test"
+  },
+  "keywords": [
+    "vibhillion",
+    "exam-prep",
+    "react-native",
+    "expo",
+    "vite",
+    "supabase"
+  ],
+  "author": "Vibhillion AI",
+  "license": "ISC"
+}
+
