@@ -32,7 +32,7 @@ export default function TimedExamScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const examId = (params.examId as string) || 'e0000001-0000-0000-0000-000000000001';
-  const sectionId = (params.sectionId as string) || 's0000001-0000-0000-0000-000000000001';
+  const sectionId = (params.sectionId as string) || 'a0000001-0000-0000-0000-000000000001';
   const sectionName = (params.sectionName as string) || 'English Comprehension';
 
   // Test states

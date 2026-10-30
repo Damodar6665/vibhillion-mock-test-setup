@@ -51,7 +51,7 @@ let MOCK_EXAMS: Exam[] = [
 
 let MOCK_SECTIONS: ExamSection[] = [
   {
-    id: 's0000001-0000-0000-0000-000000000001',
+    id: 'a0000001-0000-0000-0000-000000000001',
     exam_id: 'e0000001-0000-0000-0000-000000000001',
     name: 'English Comprehension',
     display_order: 1,
@@ -63,7 +63,7 @@ let MOCK_SECTIONS: ExamSection[] = [
     updated_at: new Date().toISOString(),
   },
   {
-    id: 's0000002-0000-0000-0000-000000000002',
+    id: 'a0000002-0000-0000-0000-000000000002',
     exam_id: 'e0000001-0000-0000-0000-000000000001',
     name: 'General Intelligence & Reasoning',
     display_order: 2,
@@ -75,7 +75,7 @@ let MOCK_SECTIONS: ExamSection[] = [
     updated_at: new Date().toISOString(),
   },
   {
-    id: 's0000003-0000-0000-0000-000000000003',
+    id: 'a0000003-0000-0000-0000-000000000003',
     exam_id: 'e0000001-0000-0000-0000-000000000001',
     name: 'Quantitative Aptitude',
     display_order: 3,
@@ -87,7 +87,7 @@ let MOCK_SECTIONS: ExamSection[] = [
     updated_at: new Date().toISOString(),
   },
   {
-    id: 's0000004-0000-0000-0000-000000000004',
+    id: 'a0000004-0000-0000-0000-000000000004',
     exam_id: 'e0000001-0000-0000-0000-000000000001',
     name: 'General Awareness',
     display_order: 4,
@@ -102,8 +102,8 @@ let MOCK_SECTIONS: ExamSection[] = [
 
 let MOCK_QUESTIONS: any[] = [
   {
-    id: 'q0000001-0000-0000-0000-000000000001',
-    section_id: 's0000001-0000-0000-0000-000000000001',
+    id: 'b0000001-0000-0000-0000-000000000001',
+    section_id: 'a0000001-0000-0000-0000-000000000001',
     question_number: 1,
     question_text: 'Select the segment that contains a grammatical error: "Neither the supervisor nor the engineers was present at the project site when the anomaly was reported."',
     question_type: 'single_choice',
@@ -123,8 +123,8 @@ let MOCK_QUESTIONS: any[] = [
     correct_option_id: 'o2',
   },
   {
-    id: 'q0000001-0000-0000-0000-000000000002',
-    section_id: 's0000001-0000-0000-0000-000000000001',
+    id: 'b0000001-0000-0000-0000-000000000002',
+    section_id: 'a0000001-0000-0000-0000-000000000001',
     question_number: 2,
     question_text: 'Select the most appropriate SYNONYM of the given word: METICULOUS',
     question_type: 'single_choice',
@@ -144,8 +144,8 @@ let MOCK_QUESTIONS: any[] = [
   },
   // Section 2: General Intelligence & Reasoning
   {
-    id: 'q0000002-0000-0000-0000-000000000001',
-    section_id: 's0000002-0000-0000-0000-000000000002',
+    id: 'b0000002-0000-0000-0000-000000000001',
+    section_id: 'a0000002-0000-0000-0000-000000000002',
     question_number: 1,
     question_text: 'Select the related word from the given alternatives: Architect : Building :: Sculptor : ?',
     question_type: 'single_choice',
@@ -165,8 +165,8 @@ let MOCK_QUESTIONS: any[] = [
     correct_option_id: 'o23',
   },
   {
-    id: 'q0000002-0000-0000-0000-000000000002',
-    section_id: 's0000002-0000-0000-0000-000000000002',
+    id: 'b0000002-0000-0000-0000-000000000002',
+    section_id: 'a0000002-0000-0000-0000-000000000002',
     question_number: 2,
     question_text: 'Find the next number in the sequence: 3, 7, 15, 31, 63, ?',
     question_type: 'single_choice',
@@ -187,8 +187,8 @@ let MOCK_QUESTIONS: any[] = [
   },
   // Section 3: Quantitative Aptitude
   {
-    id: 'q0000003-0000-0000-0000-000000000001',
-    section_id: 's0000003-0000-0000-0000-000000000003',
+    id: 'b0000003-0000-0000-0000-000000000001',
+    section_id: 'a0000003-0000-0000-0000-000000000003',
     question_number: 1,
     question_text: 'If the price of a commodity increases by 25%, by what percentage must consumption be reduced so that expenditure remains unchanged?',
     question_type: 'single_choice',
@@ -209,8 +209,8 @@ let MOCK_QUESTIONS: any[] = [
   },
   // Section 4: General Awareness
   {
-    id: 'q0000004-0000-0000-0000-000000000001',
-    section_id: 's0000004-0000-0000-0000-000000000004',
+    id: 'b0000004-0000-0000-0000-000000000001',
+    section_id: 'a0000004-0000-0000-0000-000000000004',
     question_number: 1,
     question_text: 'Which Article of the Constitution of India guarantees the Right to Equality before law and equal protection of the laws?',
     question_type: 'single_choice',
@@ -233,7 +233,7 @@ let MOCK_QUESTIONS: any[] = [
 let MOCK_AUDIT_LOG: any[] = [
   {
     id: 'aud-1',
-    question_id: 'q0000001-0000-0000-0000-000000000001',
+    question_id: 'b0000001-0000-0000-0000-000000000001',
     changed_by_name: 'Super Admin',
     old_correct_label: 'A',
     new_correct_label: 'B',

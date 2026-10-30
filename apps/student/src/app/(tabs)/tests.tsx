@@ -68,7 +68,7 @@ export default function TestsScreen() {
       pathname: '/exam/instructions',
       params: {
         examId: exam.id,
-        sectionId: section ? section.id : (exam.sections && exam.sections[0]?.id) || 's0000001-0000-0000-0000-000000000001',
+        sectionId: section ? section.id : (exam.sections && exam.sections[0]?.id) || 'a0000001-0000-0000-0000-000000000001',
         sectionName: section ? section.name : 'English Comprehension',
       },
     });

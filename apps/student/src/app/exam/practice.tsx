@@ -30,7 +30,7 @@ export default function PracticeExamScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const examId = (params.examId as string) || 'e0000001-0000-0000-0000-000000000001';
-  const sectionId = (params.sectionId as string) || 's0000001-0000-0000-0000-000000000001';
+  const sectionId = (params.sectionId as string) || 'a0000001-0000-0000-0000-000000000001';
   const sectionName = (params.sectionName as string) || 'English Comprehension';
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -198,11 +198,11 @@ export default function PracticeExamScreen() {
 
   // Map known correct answers for practice reveal mode
   const correctOptionIds: Record<string, string> = {
-    'q0000001-0000-0000-0000-000000000001': 'o2',
-    'q0000001-0000-0000-0000-000000000002': 'o5',
-    'q0000001-0000-0000-0000-000000000003': 'o11',
-    'q0000001-0000-0000-0000-000000000004': 'o14',
-    'q0000001-0000-0000-0000-000000000005': 'o17',
+    'b0000001-0000-0000-0000-000000000001': 'o2',
+    'b0000001-0000-0000-0000-000000000002': 'o5',
+    'b0000001-0000-0000-0000-000000000003': 'o11',
+    'b0000001-0000-0000-0000-000000000004': 'o14',
+    'b0000001-0000-0000-0000-000000000005': 'o17',
   };
   const correctOptionId = correctOptionIds[currentQ.id];
 

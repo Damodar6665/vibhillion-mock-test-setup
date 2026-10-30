@@ -42,7 +42,7 @@ const MOCK_CATEGORIES: Category[] = [
 
 const MOCK_SECTIONS: ExamSection[] = [
   {
-    id: 's0000001-0000-0000-0000-000000000001',
+    id: 'a0000001-0000-0000-0000-000000000001',
     exam_id: 'e0000001-0000-0000-0000-000000000001',
     name: 'English Comprehension',
     display_order: 1,
@@ -54,7 +54,7 @@ const MOCK_SECTIONS: ExamSection[] = [
     updated_at: new Date().toISOString(),
   },
   {
-    id: 's0000002-0000-0000-0000-000000000002',
+    id: 'a0000002-0000-0000-0000-000000000002',
     exam_id: 'e0000001-0000-0000-0000-000000000001',
     name: 'General Intelligence & Reasoning',
     display_order: 2,
@@ -66,7 +66,7 @@ const MOCK_SECTIONS: ExamSection[] = [
     updated_at: new Date().toISOString(),
   },
   {
-    id: 's0000003-0000-0000-0000-000000000003',
+    id: 'a0000003-0000-0000-0000-000000000003',
     exam_id: 'e0000001-0000-0000-0000-000000000001',
     name: 'Quantitative Aptitude',
     display_order: 3,
@@ -78,7 +78,7 @@ const MOCK_SECTIONS: ExamSection[] = [
     updated_at: new Date().toISOString(),
   },
   {
-    id: 's0000004-0000-0000-0000-000000000004',
+    id: 'a0000004-0000-0000-0000-000000000004',
     exam_id: 'e0000001-0000-0000-0000-000000000001',
     name: 'General Awareness',
     display_order: 4,
@@ -115,8 +115,8 @@ const MOCK_EXAM: Exam = {
 const MOCK_QUESTIONS: Question[] = [
   // SECTION 1: ENGLISH COMPREHENSION
   {
-    id: 'q0000001-0000-0000-0000-000000000001',
-    section_id: 's0000001-0000-0000-0000-000000000001',
+    id: 'b0000001-0000-0000-0000-000000000001',
+    section_id: 'a0000001-0000-0000-0000-000000000001',
     question_number: 1,
     question_text: 'Select the segment of the sentence that contains a grammatical error: "Neither the supervisor nor the engineers was present at the project site when the anomaly was reported."',
     question_type: 'single_choice',
@@ -137,8 +137,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000001-0000-0000-0000-000000000002',
-    section_id: 's0000001-0000-0000-0000-000000000001',
+    id: 'b0000001-0000-0000-0000-000000000002',
+    section_id: 'a0000001-0000-0000-0000-000000000001',
     question_number: 2,
     question_text: 'Select the most appropriate SYNONYM of the given word: METICULOUS',
     question_type: 'single_choice',
@@ -159,8 +159,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000001-0000-0000-0000-000000000003',
-    section_id: 's0000001-0000-0000-0000-000000000001',
+    id: 'b0000001-0000-0000-0000-000000000003',
+    section_id: 'a0000001-0000-0000-0000-000000000001',
     question_number: 3,
     question_text: 'Select the most appropriate ANTONYM of the given word: EPHEMERAL',
     question_type: 'single_choice',
@@ -181,8 +181,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000001-0000-0000-0000-000000000004',
-    section_id: 's0000001-0000-0000-0000-000000000001',
+    id: 'b0000001-0000-0000-0000-000000000004',
+    section_id: 'a0000001-0000-0000-0000-000000000001',
     question_number: 4,
     question_text: 'Select the meaning of the given idiom: "Bite the bullet"',
     question_type: 'single_choice',
@@ -203,8 +203,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000001-0000-0000-0000-000000000005',
-    section_id: 's0000001-0000-0000-0000-000000000001',
+    id: 'b0000001-0000-0000-0000-000000000005',
+    section_id: 'a0000001-0000-0000-0000-000000000001',
     question_number: 5,
     question_text: 'Select the option that can be used as a one-word substitute: "A person who loves and collects books."',
     question_type: 'single_choice',
@@ -227,8 +227,8 @@ const MOCK_QUESTIONS: Question[] = [
 
   // SECTION 2: GENERAL INTELLIGENCE & REASONING
   {
-    id: 'q0000002-0000-0000-0000-000000000001',
-    section_id: 's0000002-0000-0000-0000-000000000002',
+    id: 'b0000002-0000-0000-0000-000000000001',
+    section_id: 'a0000002-0000-0000-0000-000000000002',
     question_number: 1,
     question_text: 'Select the related word from the given alternatives: Architect : Building :: Sculptor : ?',
     question_type: 'single_choice',
@@ -249,8 +249,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000002-0000-0000-0000-000000000002',
-    section_id: 's0000002-0000-0000-0000-000000000002',
+    id: 'b0000002-0000-0000-0000-000000000002',
+    section_id: 'a0000002-0000-0000-0000-000000000002',
     question_number: 2,
     question_text: 'Find the next number in the sequence: 3, 7, 15, 31, 63, ?',
     question_type: 'single_choice',
@@ -271,8 +271,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000002-0000-0000-0000-000000000003',
-    section_id: 's0000002-0000-0000-0000-000000000002',
+    id: 'b0000002-0000-0000-0000-000000000003',
+    section_id: 'a0000002-0000-0000-0000-000000000002',
     question_number: 3,
     question_text: 'In a certain code language, if CLOUD is coded as ENQWF, how is RAIN coded in that language?',
     question_type: 'single_choice',
@@ -293,8 +293,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000002-0000-0000-0000-000000000004',
-    section_id: 's0000002-0000-0000-0000-000000000002',
+    id: 'b0000002-0000-0000-0000-000000000004',
+    section_id: 'a0000002-0000-0000-0000-000000000002',
     question_number: 4,
     question_text: 'Statements: All cats are mammals. All mammals are animals. Conclusion: (I) All cats are animals. (II) Some animals are cats.',
     question_type: 'single_choice',
@@ -315,8 +315,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000002-0000-0000-0000-000000000005',
-    section_id: 's0000002-0000-0000-0000-000000000002',
+    id: 'b0000002-0000-0000-0000-000000000005',
+    section_id: 'a0000002-0000-0000-0000-000000000002',
     question_number: 5,
     question_text: 'A candidate walks 4 km towards North, then turns right and walks 3 km. How far is the candidate from the starting point?',
     question_type: 'single_choice',
@@ -339,8 +339,8 @@ const MOCK_QUESTIONS: Question[] = [
 
   // SECTION 3: QUANTITATIVE APTITUDE
   {
-    id: 'q0000003-0000-0000-0000-000000000001',
-    section_id: 's0000003-0000-0000-0000-000000000003',
+    id: 'b0000003-0000-0000-0000-000000000001',
+    section_id: 'a0000003-0000-0000-0000-000000000003',
     question_number: 1,
     question_text: 'If the price of a commodity increases by 25%, by what percentage must consumption be reduced so that the expenditure remains unchanged?',
     question_type: 'single_choice',
@@ -361,8 +361,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000003-0000-0000-0000-000000000002',
-    section_id: 's0000003-0000-0000-0000-000000000003',
+    id: 'b0000003-0000-0000-0000-000000000002',
+    section_id: 'a0000003-0000-0000-0000-000000000003',
     question_number: 2,
     question_text: 'A merchant marks an article at ₹500 and sells it at a 20% profit. What is the selling price?',
     question_type: 'single_choice',
@@ -383,8 +383,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000003-0000-0000-0000-000000000003',
-    section_id: 's0000003-0000-0000-0000-000000000003',
+    id: 'b0000003-0000-0000-0000-000000000003',
+    section_id: 'a0000003-0000-0000-0000-000000000003',
     question_number: 3,
     question_text: 'If A : B = 2 : 3 and B : C = 4 : 5, find the ratio A : B : C.',
     question_type: 'single_choice',
@@ -405,8 +405,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000003-0000-0000-0000-000000000004',
-    section_id: 's0000003-0000-0000-0000-000000000003',
+    id: 'b0000003-0000-0000-0000-000000000004',
+    section_id: 'a0000003-0000-0000-0000-000000000003',
     question_number: 4,
     question_text: 'A alone can complete a project in 10 days and B alone can complete it in 15 days. How many days will they take working together?',
     question_type: 'single_choice',
@@ -427,8 +427,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000003-0000-0000-0000-000000000005',
-    section_id: 's0000003-0000-0000-0000-000000000003',
+    id: 'b0000003-0000-0000-0000-000000000005',
+    section_id: 'a0000003-0000-0000-0000-000000000003',
     question_number: 5,
     question_text: 'In an acute angle triangle, if sin θ = 3/5, what is the value of tan θ?',
     question_type: 'single_choice',
@@ -451,8 +451,8 @@ const MOCK_QUESTIONS: Question[] = [
 
   // SECTION 4: GENERAL AWARENESS
   {
-    id: 'q0000004-0000-0000-0000-000000000001',
-    section_id: 's0000004-0000-0000-0000-000000000004',
+    id: 'b0000004-0000-0000-0000-000000000001',
+    section_id: 'a0000004-0000-0000-0000-000000000004',
     question_number: 1,
     question_text: 'Which Article of the Constitution of India guarantees the Right to Equality before law and equal protection of the laws?',
     question_type: 'single_choice',
@@ -473,8 +473,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000004-0000-0000-0000-000000000002',
-    section_id: 's0000004-0000-0000-0000-000000000004',
+    id: 'b0000004-0000-0000-0000-000000000002',
+    section_id: 'a0000004-0000-0000-0000-000000000004',
     question_number: 2,
     question_text: 'Who established the Maurya Empire in ancient India with the assistance of Chanakya?',
     question_type: 'single_choice',
@@ -495,8 +495,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000004-0000-0000-0000-000000000003',
-    section_id: 's0000004-0000-0000-0000-000000000004',
+    id: 'b0000004-0000-0000-0000-000000000003',
+    section_id: 'a0000004-0000-0000-0000-000000000004',
     question_number: 3,
     question_text: 'Which river is traditionally known as the "Sorrow of Bihar" due to its frequent devastating floods?',
     question_type: 'single_choice',
@@ -517,8 +517,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000004-0000-0000-0000-000000000004',
-    section_id: 's0000004-0000-0000-0000-000000000004',
+    id: 'b0000004-0000-0000-0000-000000000004',
+    section_id: 'a0000004-0000-0000-0000-000000000004',
     question_number: 4,
     question_text: 'Which cellular organelle is universally termed as the "powerhouse of the cell"?',
     question_type: 'single_choice',
@@ -539,8 +539,8 @@ const MOCK_QUESTIONS: Question[] = [
     ],
   },
   {
-    id: 'q0000004-0000-0000-0000-000000000005',
-    section_id: 's0000004-0000-0000-0000-000000000004',
+    id: 'b0000004-0000-0000-0000-000000000005',
+    section_id: 'a0000004-0000-0000-0000-000000000004',
     question_number: 5,
     question_text: 'What does "GDP" represent in Macroeconomics?',
     question_type: 'single_choice',
@@ -565,29 +565,29 @@ const MOCK_QUESTIONS: Question[] = [
 // Offline correct answers map
 const MOCK_CORRECT_MAPPING: Record<string, string> = {
   // English
-  'q0000001-0000-0000-0000-000000000001': 'o2',
-  'q0000001-0000-0000-0000-000000000002': 'o5',
-  'q0000001-0000-0000-0000-000000000003': 'o11',
-  'q0000001-0000-0000-0000-000000000004': 'o14',
-  'q0000001-0000-0000-0000-000000000005': 'o17',
+  'b0000001-0000-0000-0000-000000000001': 'o2',
+  'b0000001-0000-0000-0000-000000000002': 'o5',
+  'b0000001-0000-0000-0000-000000000003': 'o11',
+  'b0000001-0000-0000-0000-000000000004': 'o14',
+  'b0000001-0000-0000-0000-000000000005': 'o17',
   // Reasoning
-  'q0000002-0000-0000-0000-000000000001': 'o23',
-  'q0000002-0000-0000-0000-000000000002': 'o25',
-  'q0000002-0000-0000-0000-000000000003': 'o29',
-  'q0000002-0000-0000-0000-000000000004': 'o35',
-  'q0000002-0000-0000-0000-000000000005': 'o37',
+  'b0000002-0000-0000-0000-000000000001': 'o23',
+  'b0000002-0000-0000-0000-000000000002': 'o25',
+  'b0000002-0000-0000-0000-000000000003': 'o29',
+  'b0000002-0000-0000-0000-000000000004': 'o35',
+  'b0000002-0000-0000-0000-000000000005': 'o37',
   // Quant
-  'q0000003-0000-0000-0000-000000000001': 'o41',
-  'q0000003-0000-0000-0000-000000000002': 'o46',
-  'q0000003-0000-0000-0000-000000000003': 'o49',
-  'q0000003-0000-0000-0000-000000000004': 'o54',
-  'q0000003-0000-0000-0000-000000000005': 'o57',
+  'b0000003-0000-0000-0000-000000000001': 'o41',
+  'b0000003-0000-0000-0000-000000000002': 'o46',
+  'b0000003-0000-0000-0000-000000000003': 'o49',
+  'b0000003-0000-0000-0000-000000000004': 'o54',
+  'b0000003-0000-0000-0000-000000000005': 'o57',
   // GA
-  'q0000004-0000-0000-0000-000000000001': 'o61',
-  'q0000004-0000-0000-0000-000000000002': 'o65',
-  'q0000004-0000-0000-0000-000000000003': 'o69',
-  'q0000004-0000-0000-0000-000000000004': 'o73',
-  'q0000004-0000-0000-0000-000000000005': 'o77',
+  'b0000004-0000-0000-0000-000000000001': 'o61',
+  'b0000004-0000-0000-0000-000000000002': 'o65',
+  'b0000004-0000-0000-0000-000000000003': 'o69',
+  'b0000004-0000-0000-0000-000000000004': 'o73',
+  'b0000004-0000-0000-0000-000000000005': 'o77',
 };
 
 export const examService = {

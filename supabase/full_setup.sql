@@ -933,10 +933,10 @@ insert into public.exams (
 -- 3. Configure 4 sections for SSC CGL Tier 1 (Configurable independent counts and timers)
 insert into public.exam_sections (id, exam_id, name, display_order, question_count, duration_seconds, marks_per_correct, negative_marks_per_wrong)
 values 
-  ('s0000001-0000-0000-0000-000000000001', 'e0000001-0000-0000-0000-000000000001', 'English Comprehension', 1, 25, 900, 2.00, 0.50),
-  ('s0000002-0000-0000-0000-000000000002', 'e0000001-0000-0000-0000-000000000001', 'General Intelligence & Reasoning', 2, 25, 900, 2.00, 0.50),
-  ('s0000003-0000-0000-0000-000000000003', 'e0000001-0000-0000-0000-000000000001', 'Quantitative Aptitude', 3, 25, 900, 2.00, 0.50),
-  ('s0000004-0000-0000-0000-000000000004', 'e0000001-0000-0000-0000-000000000001', 'General Awareness', 4, 25, 900, 2.00, 0.50)
+  ('a0000001-0000-0000-0000-000000000001', 'e0000001-0000-0000-0000-000000000001', 'English Comprehension', 1, 25, 900, 2.00, 0.50),
+  ('a0000002-0000-0000-0000-000000000002', 'e0000001-0000-0000-0000-000000000001', 'General Intelligence & Reasoning', 2, 25, 900, 2.00, 0.50),
+  ('a0000003-0000-0000-0000-000000000003', 'e0000001-0000-0000-0000-000000000001', 'Quantitative Aptitude', 3, 25, 900, 2.00, 0.50),
+  ('a0000004-0000-0000-0000-000000000004', 'e0000001-0000-0000-0000-000000000001', 'General Awareness', 4, 25, 900, 2.00, 0.50)
 on conflict (id) do update set
   name = excluded.name,
   duration_seconds = excluded.duration_seconds;
@@ -956,8 +956,8 @@ values (
 -- Question 1: Spotting Error
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000001-0000-0000-0000-000000000001',
-  's0000001-0000-0000-0000-000000000001',
+  'b0000001-0000-0000-0000-000000000001',
+  'a0000001-0000-0000-0000-000000000001',
   1,
   'Select the segment of the sentence that contains a grammatical error: "Neither the supervisor nor the engineers was present at the project site when the anomaly was reported."',
   'single_choice',
@@ -974,24 +974,24 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000001-0000-0000-0000-000000000001', 'q0000001-0000-0000-0000-000000000001', 'A', 'Neither the supervisor', 1),
-  ('o0000001-0000-0000-0000-000000000002', 'q0000001-0000-0000-0000-000000000001', 'B', 'nor the engineers was present', 2),
-  ('o0000001-0000-0000-0000-000000000003', 'q0000001-0000-0000-0000-000000000001', 'C', 'at the project site', 3),
-  ('o0000001-0000-0000-0000-000000000004', 'q0000001-0000-0000-0000-000000000001', 'D', 'when the anomaly was reported', 4)
+  ('d0000001-0000-0000-0000-000000000001', 'b0000001-0000-0000-0000-000000000001', 'A', 'Neither the supervisor', 1),
+  ('d0000001-0000-0000-0000-000000000002', 'b0000001-0000-0000-0000-000000000001', 'B', 'nor the engineers was present', 2),
+  ('d0000001-0000-0000-0000-000000000003', 'b0000001-0000-0000-0000-000000000001', 'C', 'at the project site', 3),
+  ('d0000001-0000-0000-0000-000000000004', 'b0000001-0000-0000-0000-000000000001', 'D', 'when the anomaly was reported', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000001-0000-0000-0000-000000000001',
-  'o0000001-0000-0000-0000-000000000002',
+  'b0000001-0000-0000-0000-000000000001',
+  'd0000001-0000-0000-0000-000000000002',
   'Option B contains the error: "nor the engineers was present" should be "nor the engineers were present".'
 ) on conflict (question_id) do nothing;
 
 -- Question 2: Synonym
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000001-0000-0000-0000-000000000002',
-  's0000001-0000-0000-0000-000000000001',
+  'b0000001-0000-0000-0000-000000000002',
+  'a0000001-0000-0000-0000-000000000001',
   2,
   'Select the most appropriate SYNONYM of the given word: METICULOUS',
   'single_choice',
@@ -1008,24 +1008,24 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000001-0000-0000-0000-000000000005', 'q0000001-0000-0000-0000-000000000002', 'A', 'Painstaking', 1),
-  ('o0000001-0000-0000-0000-000000000006', 'q0000001-0000-0000-0000-000000000002', 'B', 'Careless', 2),
-  ('o0000001-0000-0000-0000-000000000007', 'q0000001-0000-0000-0000-000000000002', 'C', 'Hasty', 3),
-  ('o0000001-0000-0000-0000-000000000008', 'q0000001-0000-0000-0000-000000000002', 'D', 'Casual', 4)
+  ('d0000001-0000-0000-0000-000000000005', 'b0000001-0000-0000-0000-000000000002', 'A', 'Painstaking', 1),
+  ('d0000001-0000-0000-0000-000000000006', 'b0000001-0000-0000-0000-000000000002', 'B', 'Careless', 2),
+  ('d0000001-0000-0000-0000-000000000007', 'b0000001-0000-0000-0000-000000000002', 'C', 'Hasty', 3),
+  ('d0000001-0000-0000-0000-000000000008', 'b0000001-0000-0000-0000-000000000002', 'D', 'Casual', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000001-0000-0000-0000-000000000002',
-  'o0000001-0000-0000-0000-000000000005',
+  'b0000001-0000-0000-0000-000000000002',
+  'd0000001-0000-0000-0000-000000000005',
   'Option A is correct: "Painstaking" means taking great care and effort, which matches "Meticulous".'
 ) on conflict (question_id) do nothing;
 
 -- Question 3: Antonym
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000001-0000-0000-0000-000000000003',
-  's0000001-0000-0000-0000-000000000001',
+  'b0000001-0000-0000-0000-000000000003',
+  'a0000001-0000-0000-0000-000000000001',
   3,
   'Select the most appropriate ANTONYM of the given word: EPHEMERAL',
   'single_choice',
@@ -1042,24 +1042,24 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000001-0000-0000-0000-000000000009', 'q0000001-0000-0000-0000-000000000003', 'A', 'Transient', 1),
-  ('o0000001-0000-0000-0000-000000000010', 'q0000001-0000-0000-0000-000000000003', 'B', 'Fleeting', 2),
-  ('o0000001-0000-0000-0000-000000000011', 'q0000001-0000-0000-0000-000000000003', 'C', 'Permanent', 3),
-  ('o0000001-0000-0000-0000-000000000012', 'q0000001-0000-0000-0000-000000000003', 'D', 'Momentary', 4)
+  ('d0000001-0000-0000-0000-000000000009', 'b0000001-0000-0000-0000-000000000003', 'A', 'Transient', 1),
+  ('d0000001-0000-0000-0000-000000000010', 'b0000001-0000-0000-0000-000000000003', 'B', 'Fleeting', 2),
+  ('d0000001-0000-0000-0000-000000000011', 'b0000001-0000-0000-0000-000000000003', 'C', 'Permanent', 3),
+  ('d0000001-0000-0000-0000-000000000012', 'b0000001-0000-0000-0000-000000000003', 'D', 'Momentary', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000001-0000-0000-0000-000000000003',
-  'o0000001-0000-0000-0000-000000000011',
+  'b0000001-0000-0000-0000-000000000003',
+  'd0000001-0000-0000-0000-000000000011',
   'Option C is correct: "Permanent" is the exact antonym of "Ephemeral".'
 ) on conflict (question_id) do nothing;
 
 -- Question 4: Idioms & Phrases
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000001-0000-0000-0000-000000000004',
-  's0000001-0000-0000-0000-000000000001',
+  'b0000001-0000-0000-0000-000000000004',
+  'a0000001-0000-0000-0000-000000000001',
   4,
   'Select the meaning of the given idiom: "Bite the bullet"',
   'single_choice',
@@ -1076,24 +1076,24 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000001-0000-0000-0000-000000000013', 'q0000001-0000-0000-0000-000000000004', 'A', 'To act impulsively without considering consequences', 1),
-  ('o0000001-0000-0000-0000-000000000014', 'q0000001-0000-0000-0000-000000000004', 'B', 'To face a painful situation with courage and endurance', 2),
-  ('o0000001-0000-0000-0000-000000000015', 'q0000001-0000-0000-0000-000000000004', 'C', 'To criticize someone harshly in public', 3),
-  ('o0000001-0000-0000-0000-000000000016', 'q0000001-0000-0000-0000-000000000004', 'D', 'To withdraw from a competition beforehand', 4)
+  ('d0000001-0000-0000-0000-000000000013', 'b0000001-0000-0000-0000-000000000004', 'A', 'To act impulsively without considering consequences', 1),
+  ('d0000001-0000-0000-0000-000000000014', 'b0000001-0000-0000-0000-000000000004', 'B', 'To face a painful situation with courage and endurance', 2),
+  ('d0000001-0000-0000-0000-000000000015', 'b0000001-0000-0000-0000-000000000004', 'C', 'To criticize someone harshly in public', 3),
+  ('d0000001-0000-0000-0000-000000000016', 'b0000001-0000-0000-0000-000000000004', 'D', 'To withdraw from a competition beforehand', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000001-0000-0000-0000-000000000004',
-  'o0000001-0000-0000-0000-000000000014',
+  'b0000001-0000-0000-0000-000000000004',
+  'd0000001-0000-0000-0000-000000000014',
   'Option B is correct: To face a painful or difficult situation with fortitude.'
 ) on conflict (question_id) do nothing;
 
 -- Question 5: One Word Substitution
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000001-0000-0000-0000-000000000005',
-  's0000001-0000-0000-0000-000000000001',
+  'b0000001-0000-0000-0000-000000000005',
+  'a0000001-0000-0000-0000-000000000001',
   5,
   'Select the option that can be used as a one-word substitute for the underlined group of words: "A person who loves and collects books."',
   'single_choice',
@@ -1110,16 +1110,16 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000001-0000-0000-0000-000000000017', 'q0000001-0000-0000-0000-000000000005', 'A', 'Bibliophile', 1),
-  ('o0000001-0000-0000-0000-000000000018', 'q0000001-0000-0000-0000-000000000005', 'B', 'Philatelist', 2),
-  ('o0000001-0000-0000-0000-000000000019', 'q0000001-0000-0000-0000-000000000005', 'C', 'Numismatist', 3),
-  ('o0000001-0000-0000-0000-000000000020', 'q0000001-0000-0000-0000-000000000005', 'D', 'Somnambulist', 4)
+  ('d0000001-0000-0000-0000-000000000017', 'b0000001-0000-0000-0000-000000000005', 'A', 'Bibliophile', 1),
+  ('d0000001-0000-0000-0000-000000000018', 'b0000001-0000-0000-0000-000000000005', 'B', 'Philatelist', 2),
+  ('d0000001-0000-0000-0000-000000000019', 'b0000001-0000-0000-0000-000000000005', 'C', 'Numismatist', 3),
+  ('d0000001-0000-0000-0000-000000000020', 'b0000001-0000-0000-0000-000000000005', 'D', 'Somnambulist', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000001-0000-0000-0000-000000000005',
-  'o0000001-0000-0000-0000-000000000017',
+  'b0000001-0000-0000-0000-000000000005',
+  'd0000001-0000-0000-0000-000000000017',
   'Option A is correct: Bibliophile.'
 ) on conflict (question_id) do nothing;
 
@@ -1131,8 +1131,8 @@ values (
 -- Question 1: Analogy
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000002-0000-0000-0000-000000000001',
-  's0000002-0000-0000-0000-000000000002',
+  'b0000002-0000-0000-0000-000000000001',
+  'a0000002-0000-0000-0000-000000000002',
   1,
   'Select the related word from the given alternatives: Architect : Building :: Sculptor : ?',
   'single_choice',
@@ -1149,24 +1149,24 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000002-0000-0000-0000-000000000021', 'q0000002-0000-0000-0000-000000000001', 'A', 'Museum', 1),
-  ('o0000002-0000-0000-0000-000000000022', 'q0000002-0000-0000-0000-000000000001', 'B', 'Stone', 2),
-  ('o0000002-0000-0000-0000-000000000023', 'q0000002-0000-0000-0000-000000000001', 'C', 'Statue', 3),
-  ('o0000002-0000-0000-0000-000000000024', 'q0000002-0000-0000-0000-000000000001', 'D', 'Chisel', 4)
+  ('d0000002-0000-0000-0000-000000000021', 'b0000002-0000-0000-0000-000000000001', 'A', 'Museum', 1),
+  ('d0000002-0000-0000-0000-000000000022', 'b0000002-0000-0000-0000-000000000001', 'B', 'Stone', 2),
+  ('d0000002-0000-0000-0000-000000000023', 'b0000002-0000-0000-0000-000000000001', 'C', 'Statue', 3),
+  ('d0000002-0000-0000-0000-000000000024', 'b0000002-0000-0000-0000-000000000001', 'D', 'Chisel', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000002-0000-0000-0000-000000000001',
-  'o0000002-0000-0000-0000-000000000023',
+  'b0000002-0000-0000-0000-000000000001',
+  'd0000002-0000-0000-0000-000000000023',
   'Option C is correct: A sculptor creates a statue.'
 ) on conflict (question_id) do nothing;
 
 -- Question 2: Number Series
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000002-0000-0000-0000-000000000002',
-  's0000002-0000-0000-0000-000000000002',
+  'b0000002-0000-0000-0000-000000000002',
+  'a0000002-0000-0000-0000-000000000002',
   2,
   'Find the next number in the sequence: 3, 7, 15, 31, 63, ?',
   'single_choice',
@@ -1183,24 +1183,24 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000002-0000-0000-0000-000000000025', 'q0000002-0000-0000-0000-000000000002', 'A', '127', 1),
-  ('o0000002-0000-0000-0000-000000000026', 'q0000002-0000-0000-0000-000000000002', 'B', '125', 2),
-  ('o0000002-0000-0000-0000-000000000027', 'q0000002-0000-0000-0000-000000000002', 'C', '129', 3),
-  ('o0000002-0000-0000-0000-000000000028', 'q0000002-0000-0000-0000-000000000002', 'D', '131', 4)
+  ('d0000002-0000-0000-0000-000000000025', 'b0000002-0000-0000-0000-000000000002', 'A', '127', 1),
+  ('d0000002-0000-0000-0000-000000000026', 'b0000002-0000-0000-0000-000000000002', 'B', '125', 2),
+  ('d0000002-0000-0000-0000-000000000027', 'b0000002-0000-0000-0000-000000000002', 'C', '129', 3),
+  ('d0000002-0000-0000-0000-000000000028', 'b0000002-0000-0000-0000-000000000002', 'D', '131', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000002-0000-0000-0000-000000000002',
-  'o0000002-0000-0000-0000-000000000025',
+  'b0000002-0000-0000-0000-000000000002',
+  'd0000002-0000-0000-0000-000000000025',
   'Option A is correct: 127.'
 ) on conflict (question_id) do nothing;
 
 -- Question 3: Coding-Decoding
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000002-0000-0000-0000-000000000003',
-  's0000002-0000-0000-0000-000000000002',
+  'b0000002-0000-0000-0000-000000000003',
+  'a0000002-0000-0000-0000-000000000002',
   3,
   'In a certain code language, if CLOUD is coded as ENQWF, how is RAIN coded in that language?',
   'single_choice',
@@ -1217,16 +1217,16 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000002-0000-0000-0000-000000000029', 'q0000002-0000-0000-0000-000000000003', 'A', 'TCKP', 1),
-  ('o0000002-0000-0000-0000-000000000030', 'q0000002-0000-0000-0000-000000000003', 'B', 'SCLP', 2),
-  ('o0000002-0000-0000-0000-000000000031', 'q0000002-0000-0000-0000-000000000003', 'C', 'TBKQ', 3),
-  ('o0000002-0000-0000-0000-000000000032', 'q0000002-0000-0000-0000-000000000003', 'D', 'TCJQ', 4)
+  ('d0000002-0000-0000-0000-000000000029', 'b0000002-0000-0000-0000-000000000003', 'A', 'TCKP', 1),
+  ('d0000002-0000-0000-0000-000000000030', 'b0000002-0000-0000-0000-000000000003', 'B', 'SCLP', 2),
+  ('d0000002-0000-0000-0000-000000000031', 'b0000002-0000-0000-0000-000000000003', 'C', 'TBKQ', 3),
+  ('d0000002-0000-0000-0000-000000000032', 'b0000002-0000-0000-0000-000000000003', 'D', 'TCJQ', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000002-0000-0000-0000-000000000003',
-  'o0000002-0000-0000-0000-000000000029',
+  'b0000002-0000-0000-0000-000000000003',
+  'd0000002-0000-0000-0000-000000000029',
   'Option A is correct: TCKP.'
 ) on conflict (question_id) do nothing;
 
@@ -1237,8 +1237,8 @@ values (
 -- Question 1: Percentages
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000003-0000-0000-0000-000000000001',
-  's0000003-0000-0000-0000-000000000003',
+  'b0000003-0000-0000-0000-000000000001',
+  'a0000003-0000-0000-0000-000000000003',
   1,
   'If the price of a commodity increases by 25%, by what percentage must consumption be reduced so that expenditure remains unchanged?',
   'single_choice',
@@ -1255,24 +1255,24 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000003-0000-0000-0000-000000000041', 'q0000003-0000-0000-0000-000000000001', 'A', '20%', 1),
-  ('o0000003-0000-0000-0000-000000000042', 'q0000003-0000-0000-0000-000000000001', 'B', '25%', 2),
-  ('o0000003-0000-0000-0000-000000000043', 'q0000003-0000-0000-0000-000000000001', 'C', '16.67%', 3),
-  ('o0000003-0000-0000-0000-000000000044', 'q0000003-0000-0000-0000-000000000001', 'D', '15%', 4)
+  ('d0000003-0000-0000-0000-000000000041', 'b0000003-0000-0000-0000-000000000001', 'A', '20%', 1),
+  ('d0000003-0000-0000-0000-000000000042', 'b0000003-0000-0000-0000-000000000001', 'B', '25%', 2),
+  ('d0000003-0000-0000-0000-000000000043', 'b0000003-0000-0000-0000-000000000001', 'C', '16.67%', 3),
+  ('d0000003-0000-0000-0000-000000000044', 'b0000003-0000-0000-0000-000000000001', 'D', '15%', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000003-0000-0000-0000-000000000001',
-  'o0000003-0000-0000-0000-000000000041',
+  'b0000003-0000-0000-0000-000000000001',
+  'd0000003-0000-0000-0000-000000000041',
   'Option A is correct: 20%.'
 ) on conflict (question_id) do nothing;
 
 -- Question 2: Profit & Loss
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000003-0000-0000-0000-000000000002',
-  's0000003-0000-0000-0000-000000000003',
+  'b0000003-0000-0000-0000-000000000002',
+  'a0000003-0000-0000-0000-000000000003',
   2,
   'A merchant marks an article at ₹500 and sells it at a 20% profit. What is the selling price?',
   'single_choice',
@@ -1289,16 +1289,16 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000003-0000-0000-0000-000000000045', 'q0000003-0000-0000-0000-000000000002', 'A', '₹550', 1),
-  ('o0000003-0000-0000-0000-000000000046', 'q0000003-0000-0000-0000-000000000002', 'B', '₹600', 2),
-  ('o0000003-0000-0000-0000-000000000047', 'q0000003-0000-0000-0000-000000000002', 'C', '₹620', 3),
-  ('o0000003-0000-0000-0000-000000000048', 'q0000003-0000-0000-0000-000000000002', 'D', '₹580', 4)
+  ('d0000003-0000-0000-0000-000000000045', 'b0000003-0000-0000-0000-000000000002', 'A', '₹550', 1),
+  ('d0000003-0000-0000-0000-000000000046', 'b0000003-0000-0000-0000-000000000002', 'B', '₹600', 2),
+  ('d0000003-0000-0000-0000-000000000047', 'b0000003-0000-0000-0000-000000000002', 'C', '₹620', 3),
+  ('d0000003-0000-0000-0000-000000000048', 'b0000003-0000-0000-0000-000000000002', 'D', '₹580', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000003-0000-0000-0000-000000000002',
-  'o0000003-0000-0000-0000-000000000046',
+  'b0000003-0000-0000-0000-000000000002',
+  'd0000003-0000-0000-0000-000000000046',
   'Option B is correct: ₹600.'
 ) on conflict (question_id) do nothing;
 
@@ -1309,8 +1309,8 @@ values (
 -- Question 1: Indian Polity
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000004-0000-0000-0000-000000000001',
-  's0000004-0000-0000-0000-000000000004',
+  'b0000004-0000-0000-0000-000000000001',
+  'a0000004-0000-0000-0000-000000000004',
   1,
   'Which Article of the Constitution of India guarantees the Right to Equality before law and equal protection of the laws?',
   'single_choice',
@@ -1327,24 +1327,24 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000004-0000-0000-0000-000000000061', 'q0000004-0000-0000-0000-000000000001', 'A', 'Article 14', 1),
-  ('o0000004-0000-0000-0000-000000000062', 'q0000004-0000-0000-0000-000000000001', 'B', 'Article 19', 2),
-  ('o0000004-0000-0000-0000-000000000063', 'q0000004-0000-0000-0000-000000000001', 'C', 'Article 21', 3),
-  ('o0000004-0000-0000-0000-000000000064', 'q0000004-0000-0000-0000-000000000001', 'D', 'Article 32', 4)
+  ('d0000004-0000-0000-0000-000000000061', 'b0000004-0000-0000-0000-000000000001', 'A', 'Article 14', 1),
+  ('d0000004-0000-0000-0000-000000000062', 'b0000004-0000-0000-0000-000000000001', 'B', 'Article 19', 2),
+  ('d0000004-0000-0000-0000-000000000063', 'b0000004-0000-0000-0000-000000000001', 'C', 'Article 21', 3),
+  ('d0000004-0000-0000-0000-000000000064', 'b0000004-0000-0000-0000-000000000001', 'D', 'Article 32', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000004-0000-0000-0000-000000000001',
-  'o0000004-0000-0000-0000-000000000061',
+  'b0000004-0000-0000-0000-000000000001',
+  'd0000004-0000-0000-0000-000000000061',
   'Option A is correct: Article 14.'
 ) on conflict (question_id) do nothing;
 
 -- Question 2: General Science
 insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
 values (
-  'q0000004-0000-0000-0000-000000000004',
-  's0000004-0000-0000-0000-000000000004',
+  'b0000004-0000-0000-0000-000000000004',
+  'a0000004-0000-0000-0000-000000000004',
   2,
   'Which cellular organelle is universally termed as the "powerhouse of the cell"?',
   'single_choice',
@@ -1361,15 +1361,15 @@ values (
 
 insert into public.question_options (id, question_id, option_label, option_text, display_order)
 values
-  ('o0000004-0000-0000-0000-000000000073', 'q0000004-0000-0000-0000-000000000004', 'A', 'Mitochondria', 1),
-  ('o0000004-0000-0000-0000-000000000074', 'q0000004-0000-0000-0000-000000000004', 'B', 'Ribosome', 2),
-  ('o0000004-0000-0000-0000-000000000075', 'q0000004-0000-0000-0000-000000000004', 'C', 'Golgi Apparatus', 3),
-  ('o0000004-0000-0000-0000-000000000076', 'q0000004-0000-0000-0000-000000000004', 'D', 'Lysosome', 4)
+  ('d0000004-0000-0000-0000-000000000073', 'b0000004-0000-0000-0000-000000000004', 'A', 'Mitochondria', 1),
+  ('d0000004-0000-0000-0000-000000000074', 'b0000004-0000-0000-0000-000000000004', 'B', 'Ribosome', 2),
+  ('d0000004-0000-0000-0000-000000000075', 'b0000004-0000-0000-0000-000000000004', 'C', 'Golgi Apparatus', 3),
+  ('d0000004-0000-0000-0000-000000000076', 'b0000004-0000-0000-0000-000000000004', 'D', 'Lysosome', 4)
 on conflict do nothing;
 
 insert into public.question_answers (question_id, correct_option_id, explanation)
 values (
-  'q0000004-0000-0000-0000-000000000004',
-  'o0000004-0000-0000-0000-000000000073',
+  'b0000004-0000-0000-0000-000000000004',
+  'd0000004-0000-0000-0000-000000000073',
   'Option A is correct: Mitochondria.'
 ) on conflict (question_id) do nothing;
