@@ -15,6 +15,8 @@ interface AuthContextType {
   isLoading: boolean;
   isConfigured: boolean;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signUp: (email: string, password: string, fullName: string) => Promise<{ success: boolean; error?: string }>;
+  loginAsDemo: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -26,6 +28,8 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   isConfigured: false,
   signIn: async () => ({ success: false }),
+  signUp: async () => ({ success: false }),
+  loginAsDemo: () => {},
   signOut: async () => {},
 });
 
@@ -87,15 +91,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
+  const loginAsDemo = () => {
+    setUser({
+      id: 'mock-admin-id',
+      email: 'admin@vibhillion.ai',
+      user_metadata: { full_name: 'Administrator' },
+    } as any);
+    setRole('admin');
+  };
+
   const signIn = async (email: string, password: string) => {
-    // If Supabase is not configured with real credentials or demo admin is used, authenticate locally
+    // If demo admin credentials or Supabase not configured, log in locally immediately
     if (!isSupabaseConfigured || email.toLowerCase() === 'admin@vibhillion.ai') {
-      setUser({
-        id: 'mock-admin-id',
-        email,
-        user_metadata: { full_name: 'Administrator' },
-      } as any);
-      setRole('admin');
+      loginAsDemo();
       return { success: true };
     }
 
@@ -106,16 +114,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        // If network failed to resolve host, fallback to offline demo admin if email matches admin
-        if (error.message.includes('fetch') || error.message.includes('network')) {
-          setUser({
-            id: 'mock-admin-id',
-            email,
-            user_metadata: { full_name: 'Administrator (Offline)' },
-          } as any);
-          setRole('admin');
-          return { success: true };
-        }
         return { success: false, error: error.message };
       }
 
@@ -127,31 +125,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (profile?.role !== 'admin') {
+        // Try auto-elevating if registered via admin portal
+        const { data: bootRes } = await supabase.rpc('bootstrap_admin', { p_email: email });
+        if (bootRes?.success) {
+          setRole('admin');
+          return { success: true };
+        }
+
         await supabase.auth.signOut();
         return {
           success: false,
-          error: 'Access denied: You must have an administrator role to log into the Admin portal.',
+          error: 'Access denied: User is not an admin. Run bootstrap_admin in Supabase SQL editor.',
         };
       }
 
       setRole('admin');
       return { success: true };
     } catch (err: any) {
-      // Gracefully handle network fetch failures on placeholder domains
-      if (
-        email.toLowerCase().includes('admin') ||
-        err?.message?.includes('fetch') ||
-        err?.message?.includes('NetworkError')
-      ) {
-        setUser({
-          id: 'mock-admin-id',
-          email,
-          user_metadata: { full_name: 'Administrator (Offline)' },
-        } as any);
-        setRole('admin');
-        return { success: true };
-      }
       return { success: false, error: err.message || 'Login failed' };
+    }
+  };
+
+  const signUp = async (email: string, password: string, fullName: string) => {
+    if (!isSupabaseConfigured) {
+      loginAsDemo();
+      return { success: true };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName },
+        },
+      });
+
+      if (error) return { success: false, error: error.message };
+
+      if (data.user) {
+        // Auto bootstrap as admin for the console creator
+        await supabase.rpc('bootstrap_admin', { p_email: email });
+        setRole('admin');
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Sign up failed' };
     }
   };
 
@@ -174,6 +194,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         isConfigured: isSupabaseConfigured,
         signIn,
+        signUp,
+        loginAsDemo,
         signOut,
       }}
     >
@@ -183,4 +205,3 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 export const useAuth = () => useContext(AuthContext);
-
