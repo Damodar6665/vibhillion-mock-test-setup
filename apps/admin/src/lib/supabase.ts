@@ -11,8 +11,11 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 export const isSupabaseConfigured =
   Boolean(supabaseUrl) &&
   Boolean(supabaseAnonKey) &&
-  !supabaseUrl.includes('placeholder-project') &&
-  !supabaseAnonKey.includes('placeholder-key');
+  !supabaseUrl.includes('placeholder') &&
+  !supabaseUrl.includes('your-project') &&
+  !supabaseUrl.includes('example.com') &&
+  !supabaseAnonKey.includes('placeholder') &&
+  !supabaseAnonKey.includes('your-anon-key');
 
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder-project.supabase.co',

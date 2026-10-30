@@ -11,8 +11,8 @@ import { useAuth } from '../context/auth-context';
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { signIn, isConfigured } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('admin@vibhillion.ai');
+  const [password, setPassword] = useState('Admin@123');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
