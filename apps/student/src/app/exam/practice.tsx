@@ -43,6 +43,7 @@ export default function PracticeExamScreen() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const questionStartTimeRef = useRef<number>(Date.now());
   const [showPalette, setShowPalette] = useState(false);
+  const [bookmarkedMap, setBookmarkedMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     async function initPractice() {
@@ -61,6 +62,13 @@ export default function PracticeExamScreen() {
           initialAnswers[q.id] = { optionId: null, timeSpent: 0, revealed: false };
         });
         setAnswers(initialAnswers);
+
+        // Load existing bookmarks
+        examService.getBookmarks().then((bms) => {
+          const bmMap: Record<string, boolean> = {};
+          bms.forEach((b) => (bmMap[b.question_id] = true));
+          setBookmarkedMap(bmMap);
+        });
       } finally {
         setLoading(false);
         questionStartTimeRef.current = Date.now();
@@ -68,6 +76,23 @@ export default function PracticeExamScreen() {
     }
     initPractice();
   }, [examId, sectionId]);
+
+  const handleToggleBookmarkCurrent = async () => {
+    const currentQ = questions[currentIndex];
+    if (!currentQ) return;
+    const isNow = await examService.toggleBookmark({
+      id: currentQ.id,
+      question_text: currentQ.question_text,
+      topic: currentQ.topic,
+      subtopic: currentQ.subtopic,
+      difficulty: currentQ.difficulty,
+      section_name: sectionName,
+      options: currentQ.options,
+      explanation: currentQ.explanation,
+      solution_steps: currentQ.solution_steps,
+    });
+    setBookmarkedMap((prev) => ({ ...prev, [currentQ.id]: isNow }));
+  };
 
   // Elapsed timer (No countdown, runs forward)
   useEffect(() => {
@@ -241,7 +266,16 @@ export default function PracticeExamScreen() {
             <View style={styles.diffBadge}>
               <Text style={styles.diffText}>{currentQ.difficulty.toUpperCase()}</Text>
             </View>
-            <Text style={styles.topicText}>{currentQ.topic} • {currentQ.subtopic}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={styles.topicText}>{currentQ.topic} • {currentQ.subtopic}</Text>
+              <TouchableOpacity onPress={handleToggleBookmarkCurrent} style={{ padding: 4 }}>
+                <Ionicons
+                  name={bookmarkedMap[currentQ.id] ? 'bookmark' : 'bookmark-outline'}
+                  size={18}
+                  color={bookmarkedMap[currentQ.id] ? '#2563EB' : '#94A3B8'}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <Text style={styles.questionText}>{currentQ.question_text}</Text>

@@ -248,3 +248,253 @@ values (
   'Option A is correct: Bibliophile.'
 ) on conflict (question_id) do nothing;
 
+
+-- ==============================================================================
+-- 6. QUESTIONS FOR SECTION 2: GENERAL INTELLIGENCE & REASONING
+-- ==============================================================================
+
+-- Question 1: Analogy
+insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
+values (
+  'q0000002-0000-0000-0000-000000000001',
+  's0000002-0000-0000-0000-000000000002',
+  1,
+  'Select the related word from the given alternatives: Architect : Building :: Sculptor : ?',
+  'single_choice',
+  'easy',
+  'Reasoning',
+  'Analogy',
+  2.00,
+  0.50,
+  'An architect designs and creates a building; similarly, a sculptor carves and creates a statue.',
+  '["Analyze relationship: Creator to Creation", "Architect creates Building", "Sculptor creates Statue"]'::jsonb,
+  2025,
+  'Shift 1'
+) on conflict (section_id, question_number) do nothing;
+
+insert into public.question_options (id, question_id, option_label, option_text, display_order)
+values
+  ('o0000002-0000-0000-0000-000000000021', 'q0000002-0000-0000-0000-000000000001', 'A', 'Museum', 1),
+  ('o0000002-0000-0000-0000-000000000022', 'q0000002-0000-0000-0000-000000000001', 'B', 'Stone', 2),
+  ('o0000002-0000-0000-0000-000000000023', 'q0000002-0000-0000-0000-000000000001', 'C', 'Statue', 3),
+  ('o0000002-0000-0000-0000-000000000024', 'q0000002-0000-0000-0000-000000000001', 'D', 'Chisel', 4)
+on conflict do nothing;
+
+insert into public.question_answers (question_id, correct_option_id, explanation)
+values (
+  'q0000002-0000-0000-0000-000000000001',
+  'o0000002-0000-0000-0000-000000000023',
+  'Option C is correct: A sculptor creates a statue.'
+) on conflict (question_id) do nothing;
+
+-- Question 2: Number Series
+insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
+values (
+  'q0000002-0000-0000-0000-000000000002',
+  's0000002-0000-0000-0000-000000000002',
+  2,
+  'Find the next number in the sequence: 3, 7, 15, 31, 63, ?',
+  'single_choice',
+  'medium',
+  'Reasoning',
+  'Number Series',
+  2.00,
+  0.50,
+  'The pattern is: term * 2 + 1. 63 * 2 + 1 = 127. Alternatively, differences are powers of 2 (4, 8, 16, 32, 64). 63 + 64 = 127.',
+  '["Differences: 7-3=4, 15-7=8, 31-15=16, 63-31=32", "Next difference is 64", "63 + 64 = 127"]'::jsonb,
+  2025,
+  'Shift 1'
+) on conflict (section_id, question_number) do nothing;
+
+insert into public.question_options (id, question_id, option_label, option_text, display_order)
+values
+  ('o0000002-0000-0000-0000-000000000025', 'q0000002-0000-0000-0000-000000000002', 'A', '127', 1),
+  ('o0000002-0000-0000-0000-000000000026', 'q0000002-0000-0000-0000-000000000002', 'B', '125', 2),
+  ('o0000002-0000-0000-0000-000000000027', 'q0000002-0000-0000-0000-000000000002', 'C', '129', 3),
+  ('o0000002-0000-0000-0000-000000000028', 'q0000002-0000-0000-0000-000000000002', 'D', '131', 4)
+on conflict do nothing;
+
+insert into public.question_answers (question_id, correct_option_id, explanation)
+values (
+  'q0000002-0000-0000-0000-000000000002',
+  'o0000002-0000-0000-0000-000000000025',
+  'Option A is correct: 127.'
+) on conflict (question_id) do nothing;
+
+-- Question 3: Coding-Decoding
+insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
+values (
+  'q0000002-0000-0000-0000-000000000003',
+  's0000002-0000-0000-0000-000000000002',
+  3,
+  'In a certain code language, if CLOUD is coded as ENQWF, how is RAIN coded in that language?',
+  'single_choice',
+  'medium',
+  'Reasoning',
+  'Coding-Decoding',
+  2.00,
+  0.50,
+  'Each letter shifts +2 positions: R(+2)->T, A(+2)->C, I(+2)->K, N(+2)->P => TCKP.',
+  '["Shift +2 for each alphabetical index", "R -> T", "A -> C", "I -> K", "N -> P", "Result is TCKP"]'::jsonb,
+  2025,
+  'Shift 1'
+) on conflict (section_id, question_number) do nothing;
+
+insert into public.question_options (id, question_id, option_label, option_text, display_order)
+values
+  ('o0000002-0000-0000-0000-000000000029', 'q0000002-0000-0000-0000-000000000003', 'A', 'TCKP', 1),
+  ('o0000002-0000-0000-0000-000000000030', 'q0000002-0000-0000-0000-000000000003', 'B', 'SCLP', 2),
+  ('o0000002-0000-0000-0000-000000000031', 'q0000002-0000-0000-0000-000000000003', 'C', 'TBKQ', 3),
+  ('o0000002-0000-0000-0000-000000000032', 'q0000002-0000-0000-0000-000000000003', 'D', 'TCJQ', 4)
+on conflict do nothing;
+
+insert into public.question_answers (question_id, correct_option_id, explanation)
+values (
+  'q0000002-0000-0000-0000-000000000003',
+  'o0000002-0000-0000-0000-000000000029',
+  'Option A is correct: TCKP.'
+) on conflict (question_id) do nothing;
+
+-- ==============================================================================
+-- 7. QUESTIONS FOR SECTION 3: QUANTITATIVE APTITUDE
+-- ==============================================================================
+
+-- Question 1: Percentages
+insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
+values (
+  'q0000003-0000-0000-0000-000000000001',
+  's0000003-0000-0000-0000-000000000003',
+  1,
+  'If the price of a commodity increases by 25%, by what percentage must consumption be reduced so that expenditure remains unchanged?',
+  'single_choice',
+  'medium',
+  'Mathematics',
+  'Percentages',
+  2.00,
+  0.50,
+  'Required reduction = [r / (100 + r)] * 100% = [25 / 125] * 100% = 20%.',
+  '["Formula: % reduction = [r / (100 + r)] * 100", "Substitute r = 25: 25 / 125 * 100 = 20%"]'::jsonb,
+  2025,
+  'Shift 1'
+) on conflict (section_id, question_number) do nothing;
+
+insert into public.question_options (id, question_id, option_label, option_text, display_order)
+values
+  ('o0000003-0000-0000-0000-000000000041', 'q0000003-0000-0000-0000-000000000001', 'A', '20%', 1),
+  ('o0000003-0000-0000-0000-000000000042', 'q0000003-0000-0000-0000-000000000001', 'B', '25%', 2),
+  ('o0000003-0000-0000-0000-000000000043', 'q0000003-0000-0000-0000-000000000001', 'C', '16.67%', 3),
+  ('o0000003-0000-0000-0000-000000000044', 'q0000003-0000-0000-0000-000000000001', 'D', '15%', 4)
+on conflict do nothing;
+
+insert into public.question_answers (question_id, correct_option_id, explanation)
+values (
+  'q0000003-0000-0000-0000-000000000001',
+  'o0000003-0000-0000-0000-000000000041',
+  'Option A is correct: 20%.'
+) on conflict (question_id) do nothing;
+
+-- Question 2: Profit & Loss
+insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
+values (
+  'q0000003-0000-0000-0000-000000000002',
+  's0000003-0000-0000-0000-000000000003',
+  2,
+  'A merchant marks an article at ₹500 and sells it at a 20% profit. What is the selling price?',
+  'single_choice',
+  'easy',
+  'Mathematics',
+  'Profit & Loss',
+  2.00,
+  0.50,
+  'Selling Price = Cost Price * (1 + Profit%) = 500 * 1.20 = ₹600.',
+  '["Profit = 20% of 500 = ₹100", "Selling Price = 500 + 100 = ₹600"]'::jsonb,
+  2025,
+  'Shift 1'
+) on conflict (section_id, question_number) do nothing;
+
+insert into public.question_options (id, question_id, option_label, option_text, display_order)
+values
+  ('o0000003-0000-0000-0000-000000000045', 'q0000003-0000-0000-0000-000000000002', 'A', '₹550', 1),
+  ('o0000003-0000-0000-0000-000000000046', 'q0000003-0000-0000-0000-000000000002', 'B', '₹600', 2),
+  ('o0000003-0000-0000-0000-000000000047', 'q0000003-0000-0000-0000-000000000002', 'C', '₹620', 3),
+  ('o0000003-0000-0000-0000-000000000048', 'q0000003-0000-0000-0000-000000000002', 'D', '₹580', 4)
+on conflict do nothing;
+
+insert into public.question_answers (question_id, correct_option_id, explanation)
+values (
+  'q0000003-0000-0000-0000-000000000002',
+  'o0000003-0000-0000-0000-000000000046',
+  'Option B is correct: ₹600.'
+) on conflict (question_id) do nothing;
+
+-- ==============================================================================
+-- 8. QUESTIONS FOR SECTION 4: GENERAL AWARENESS
+-- ==============================================================================
+
+-- Question 1: Indian Polity
+insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
+values (
+  'q0000004-0000-0000-0000-000000000001',
+  's0000004-0000-0000-0000-000000000004',
+  1,
+  'Which Article of the Constitution of India guarantees the Right to Equality before law and equal protection of the laws?',
+  'single_choice',
+  'easy',
+  'General Awareness',
+  'Indian Polity',
+  2.00,
+  0.50,
+  'Article 14 of the Indian Constitution states that the State shall not deny to any person equality before the law or equal protection of the laws within India.',
+  '["Article 14: Equality before law", "Article 19: Fundamental freedoms", "Article 21: Protection of life", "Article 32: Constitutional remedies"]'::jsonb,
+  2025,
+  'Shift 1'
+) on conflict (section_id, question_number) do nothing;
+
+insert into public.question_options (id, question_id, option_label, option_text, display_order)
+values
+  ('o0000004-0000-0000-0000-000000000061', 'q0000004-0000-0000-0000-000000000001', 'A', 'Article 14', 1),
+  ('o0000004-0000-0000-0000-000000000062', 'q0000004-0000-0000-0000-000000000001', 'B', 'Article 19', 2),
+  ('o0000004-0000-0000-0000-000000000063', 'q0000004-0000-0000-0000-000000000001', 'C', 'Article 21', 3),
+  ('o0000004-0000-0000-0000-000000000064', 'q0000004-0000-0000-0000-000000000001', 'D', 'Article 32', 4)
+on conflict do nothing;
+
+insert into public.question_answers (question_id, correct_option_id, explanation)
+values (
+  'q0000004-0000-0000-0000-000000000001',
+  'o0000004-0000-0000-0000-000000000061',
+  'Option A is correct: Article 14.'
+) on conflict (question_id) do nothing;
+
+-- Question 2: General Science
+insert into public.questions (id, section_id, question_number, question_text, question_type, difficulty, topic, subtopic, marks, negative_marks, explanation, solution_steps, source_year, source_session)
+values (
+  'q0000004-0000-0000-0000-000000000004',
+  's0000004-0000-0000-0000-000000000004',
+  2,
+  'Which cellular organelle is universally termed as the "powerhouse of the cell"?',
+  'single_choice',
+  'easy',
+  'General Awareness',
+  'General Science',
+  2.00,
+  0.50,
+  'Mitochondria produce most of the chemical energy required by the cell in the form of ATP, hence termed powerhouses of the cell.',
+  '["Cellular respiration occurs in mitochondria", "Generates ATP", "Termed powerhouse of the cell"]'::jsonb,
+  2025,
+  'Shift 1'
+) on conflict (section_id, question_number) do nothing;
+
+insert into public.question_options (id, question_id, option_label, option_text, display_order)
+values
+  ('o0000004-0000-0000-0000-000000000073', 'q0000004-0000-0000-0000-000000000004', 'A', 'Mitochondria', 1),
+  ('o0000004-0000-0000-0000-000000000074', 'q0000004-0000-0000-0000-000000000004', 'B', 'Ribosome', 2),
+  ('o0000004-0000-0000-0000-000000000075', 'q0000004-0000-0000-0000-000000000004', 'C', 'Golgi Apparatus', 3),
+  ('o0000004-0000-0000-0000-000000000076', 'q0000004-0000-0000-0000-000000000004', 'D', 'Lysosome', 4)
+on conflict do nothing;
+
+insert into public.question_answers (question_id, correct_option_id, explanation)
+values (
+  'q0000004-0000-0000-0000-000000000004',
+  'o0000004-0000-0000-0000-000000000073',
+  'Option A is correct: Mitochondria.'
+) on conflict (question_id) do nothing;

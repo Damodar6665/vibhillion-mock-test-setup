@@ -28,6 +28,7 @@ export default function ExamSolutionScreen() {
   const [solutions, setSolutions] = useState<QuestionAnalysis[]>([]);
   const [filter, setFilter] = useState<'all' | 'correct' | 'wrong' | 'unattempted'>('all');
   const [loading, setLoading] = useState(true);
+  const [bookmarkedMap, setBookmarkedMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     async function loadSolutions() {
@@ -38,14 +39,44 @@ export default function ExamSolutionScreen() {
           localAnswers = JSON.parse(answersJson);
         } catch {}
 
-        const data = await examService.getSolutions(attemptId, localAnswers);
+        const [data, bms] = await Promise.all([
+          examService.getSolutions(attemptId, localAnswers),
+          examService.getBookmarks(),
+        ]);
+
         setSolutions(data);
+
+        const bmMap: Record<string, boolean> = {};
+        bms.forEach((b) => {
+          bmMap[b.question_id] = true;
+        });
+        setBookmarkedMap(bmMap);
       } finally {
         setLoading(false);
       }
     }
     loadSolutions();
   }, [attemptId, answersJson]);
+
+  const handleToggleBookmark = async (item: QuestionAnalysis) => {
+    const isNowBookmarked = await examService.toggleBookmark({
+      id: item.question_id,
+      question_text: item.question_text,
+      topic: item.topic,
+      subtopic: item.subtopic,
+      difficulty: item.difficulty,
+      section_name: item.section_name,
+      options: item.options,
+      correct_option_id: item.correct_option_id,
+      explanation: item.explanation,
+      solution_steps: item.solution_steps,
+    });
+
+    setBookmarkedMap((prev) => ({
+      ...prev,
+      [item.question_id]: isNowBookmarked,
+    }));
+  };
 
   const filteredSolutions = solutions.filter((item) => {
     if (filter === 'correct') return item.is_correct === true;
@@ -149,6 +180,18 @@ export default function ExamSolutionScreen() {
                     <Text style={styles.timeSpentText}>
                       <Ionicons name="time-outline" size={12} color="#64748B" /> {item.time_spent_seconds}s
                     </Text>
+
+                    {/* Bookmark Toggle */}
+                    <TouchableOpacity
+                      onPress={() => handleToggleBookmark(item)}
+                      style={{ padding: 4, marginLeft: 4 }}
+                    >
+                      <Ionicons
+                        name={bookmarkedMap[item.question_id] ? 'bookmark' : 'bookmark-outline'}
+                        size={18}
+                        color={bookmarkedMap[item.question_id] ? '#2563EB' : '#94A3B8'}
+                      />
+                    </TouchableOpacity>
                   </View>
                 </View>
 

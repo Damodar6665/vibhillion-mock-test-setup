@@ -228,3 +228,38 @@ export interface ExamResultSummary {
   total_participants?: number;
 }
 
+export interface BookmarkItem {
+  id: string;
+  user_id?: string;
+  question_id: string;
+  question_text: string;
+  topic?: string | null;
+  subtopic?: string | null;
+  difficulty?: DifficultyLevel;
+  section_name?: string;
+  options: {
+    id: string;
+    label: string;
+    text: string;
+  }[];
+  correct_option_id?: string;
+  explanation?: string | null;
+  solution_steps?: string[] | null;
+  created_at: string;
+}
+
+export interface UserAttemptHistory {
+  id: string;
+  exam_id: string;
+  exam_title: string;
+  mode: AttemptMode;
+  score: number;
+  maximum_score: number;
+  accuracy_percentage: number;
+  total_time_seconds: number;
+  submitted_at: string;
+  correct_count: number;
+  wrong_count: number;
+  unattempted_count: number;
+}
+
