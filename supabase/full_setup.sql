@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- VIBHILLION AI: EXAM PREPARATION - MASTER DATABASE SCHEMA
--- Migration: 20261029000000_initial_schema.sql
+-- Migration: 20261029000000_initial_schema.sql test
 -- ==============================================================================
 
 -- Enable UUID extension
