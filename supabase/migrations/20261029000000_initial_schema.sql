@@ -30,6 +30,7 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists set_profiles_updated_at on public.profiles;
 create trigger set_profiles_updated_at
   before update on public.profiles
   for each row execute procedure public.handle_updated_at();
@@ -87,6 +88,7 @@ create table if not exists public.categories (
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
+drop trigger if exists set_categories_updated_at on public.categories;
 create trigger set_categories_updated_at
   before update on public.categories
   for each row execute procedure public.handle_updated_at();
@@ -114,9 +116,10 @@ create table if not exists public.exams (
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
-create index if do_not_exist idx_exams_category_id on public.exams(category_id);
-create index if do_not_exist idx_exams_status on public.exams(status);
+create index if not exists idx_exams_category_id on public.exams(category_id);
+create index if not exists idx_exams_status on public.exams(status);
 
+drop trigger if exists set_exams_updated_at on public.exams;
 create trigger set_exams_updated_at
   before update on public.exams
   for each row execute procedure public.handle_updated_at();
@@ -137,8 +140,9 @@ create table if not exists public.exam_sections (
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
-create index if do_not_exist idx_exam_sections_exam_id on public.exam_sections(exam_id);
+create index if not exists idx_exam_sections_exam_id on public.exam_sections(exam_id);
 
+drop trigger if exists set_exam_sections_updated_at on public.exam_sections;
 create trigger set_exam_sections_updated_at
   before update on public.exam_sections
   for each row execute procedure public.handle_updated_at();
@@ -176,8 +180,9 @@ create table if not exists public.questions (
   unique (section_id, question_number)
 );
 
-create index if do_not_exist idx_questions_section_id on public.questions(section_id);
+create index if not exists idx_questions_section_id on public.questions(section_id);
 
+drop trigger if exists set_questions_updated_at on public.questions;
 create trigger set_questions_updated_at
   before update on public.questions
   for each row execute procedure public.handle_updated_at();
@@ -193,7 +198,7 @@ create table if not exists public.question_options (
   display_order integer not null default 0
 );
 
-create index if do_not_exist idx_question_options_question_id on public.question_options(question_id);
+create index if not exists idx_question_options_question_id on public.question_options(question_id);
 
 -- ------------------------------------------------------------------------------
 -- 8. QUESTION_ANSWERS TABLE (Protected from students before submission)
@@ -207,7 +212,7 @@ create table if not exists public.question_answers (
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
-create index if do_not_exist idx_question_answers_question_id on public.question_answers(question_id);
+create index if not exists idx_question_answers_question_id on public.question_answers(question_id);
 
 -- ------------------------------------------------------------------------------
 -- 9. EXAM_ATTEMPTS TABLE
@@ -231,9 +236,9 @@ create table if not exists public.exam_attempts (
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
-create index if do_not_exist idx_exam_attempts_user on public.exam_attempts(user_id);
-create index if do_not_exist idx_exam_attempts_exam on public.exam_attempts(exam_id);
-create index if do_not_exist idx_exam_attempts_status on public.exam_attempts(status);
+create index if not exists idx_exam_attempts_user on public.exam_attempts(user_id);
+create index if not exists idx_exam_attempts_exam on public.exam_attempts(exam_id);
+create index if not exists idx_exam_attempts_status on public.exam_attempts(status);
 
 -- ------------------------------------------------------------------------------
 -- 10. ATTEMPT_SECTIONS TABLE
@@ -254,7 +259,7 @@ create table if not exists public.attempt_sections (
   unique (attempt_id, section_id)
 );
 
-create index if do_not_exist idx_attempt_sections_attempt_id on public.attempt_sections(attempt_id);
+create index if not exists idx_attempt_sections_attempt_id on public.attempt_sections(attempt_id);
 
 -- ------------------------------------------------------------------------------
 -- 11. ATTEMPT_ANSWERS TABLE
@@ -273,7 +278,7 @@ create table if not exists public.attempt_answers (
   unique (attempt_id, question_id)
 );
 
-create index if do_not_exist idx_attempt_answers_attempt on public.attempt_answers(attempt_id);
+create index if not exists idx_attempt_answers_attempt on public.attempt_answers(attempt_id);
 
 -- ------------------------------------------------------------------------------
 -- 12. BOOKMARKS TABLE
@@ -286,7 +291,7 @@ create table if not exists public.bookmarks (
   unique (user_id, question_id)
 );
 
-create index if do_not_exist idx_bookmarks_user on public.bookmarks(user_id);
+create index if not exists idx_bookmarks_user on public.bookmarks(user_id);
 
 -- ------------------------------------------------------------------------------
 -- 13. EXAM_PARTICIPATION TABLE
@@ -302,7 +307,7 @@ create table if not exists public.exam_participation (
   unique (exam_id, user_id)
 );
 
-create index if do_not_exist idx_exam_participation_exam on public.exam_participation(exam_id);
+create index if not exists idx_exam_participation_exam on public.exam_participation(exam_id);
 
 -- ------------------------------------------------------------------------------
 -- 14. EXAM_SETTINGS & AUDIT LOG TABLES
@@ -352,40 +357,48 @@ alter table public.answer_key_audit_log enable row level security;
 
 -- PROFILES:
 -- Everyone authenticated can view profiles, user can update only their own non-role fields, admin can update all
+drop policy if exists "Profiles viewable by authenticated users" on public.profiles;
 create policy "Profiles viewable by authenticated users"
   on public.profiles for select
   using (auth.role() = 'authenticated');
 
+drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile"
   on public.profiles for update
   using (auth.uid() = id)
   with check (auth.uid() = id and (role is not distinct from role or public.is_admin()));
 
+drop policy if exists "Admins can manage all profiles" on public.profiles;
 create policy "Admins can manage all profiles"
   on public.profiles for all
   using (public.is_admin());
 
 -- CATEGORIES:
 -- Public can read active categories, admins can manage all
+drop policy if exists "Anyone can read active categories" on public.categories;
 create policy "Anyone can read active categories"
   on public.categories for select
   using (is_active = true or public.is_admin());
 
+drop policy if exists "Admins can manage categories" on public.categories;
 create policy "Admins can manage categories"
   on public.categories for all
   using (public.is_admin());
 
 -- EXAMS:
 -- Published exams are viewable by authenticated students or anyone, drafts only by admins
+drop policy if exists "Published exams viewable by everyone" on public.exams;
 create policy "Published exams viewable by everyone"
   on public.exams for select
   using (status = 'published' or public.is_admin());
 
+drop policy if exists "Admins can manage exams" on public.exams;
 create policy "Admins can manage exams"
   on public.exams for all
   using (public.is_admin());
 
 -- EXAM SECTIONS:
+drop policy if exists "Sections viewable if exam is viewable" on public.exam_sections;
 create policy "Sections viewable if exam is viewable"
   on public.exam_sections for select
   using (
@@ -395,20 +408,24 @@ create policy "Sections viewable if exam is viewable"
     )
   );
 
+drop policy if exists "Admins can manage exam sections" on public.exam_sections;
 create policy "Admins can manage exam sections"
   on public.exam_sections for all
   using (public.is_admin());
 
 -- TOPICS:
+drop policy if exists "Topics viewable by all authenticated" on public.question_topics;
 create policy "Topics viewable by all authenticated"
   on public.question_topics for select
   using (auth.role() = 'authenticated');
 
+drop policy if exists "Admins can manage topics" on public.question_topics;
 create policy "Admins can manage topics"
   on public.question_topics for all
   using (public.is_admin());
 
 -- QUESTIONS:
+drop policy if exists "Questions viewable for accessible exams" on public.questions;
 create policy "Questions viewable for accessible exams"
   on public.questions for select
   using (
@@ -419,11 +436,13 @@ create policy "Questions viewable for accessible exams"
     )
   );
 
+drop policy if exists "Admins can manage questions" on public.questions;
 create policy "Admins can manage questions"
   on public.questions for all
   using (public.is_admin());
 
 -- QUESTION OPTIONS:
+drop policy if exists "Question options viewable for accessible questions" on public.question_options;
 create policy "Question options viewable for accessible questions"
   on public.question_options for select
   using (
@@ -435,6 +454,7 @@ create policy "Question options viewable for accessible questions"
     )
   );
 
+drop policy if exists "Admins can manage question options" on public.question_options;
 create policy "Admins can manage question options"
   on public.question_options for all
   using (public.is_admin());
@@ -442,28 +462,34 @@ create policy "Admins can manage question options"
 -- QUESTION ANSWERS: (CRITICAL SECURITY: ONLY ADMINS direct read/write)
 -- Students NEVER read question_answers directly during test!
 -- Solutions are provided via secure server RPC after attempt submission.
+drop policy if exists "Only admins can access question_answers directly" on public.question_answers;
 create policy "Only admins can access question_answers directly"
   on public.question_answers for all
   using (public.is_admin());
 
 -- EXAM ATTEMPTS:
+drop policy if exists "Users can view own attempts or admin can view all" on public.exam_attempts;
 create policy "Users can view own attempts or admin can view all"
   on public.exam_attempts for select
   using (auth.uid() = user_id or public.is_admin());
 
+drop policy if exists "Users can insert own attempts" on public.exam_attempts;
 create policy "Users can insert own attempts"
   on public.exam_attempts for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can update own in-progress attempts" on public.exam_attempts;
 create policy "Users can update own in-progress attempts"
   on public.exam_attempts for update
   using (auth.uid() = user_id or public.is_admin());
 
+drop policy if exists "Admins can delete attempts" on public.exam_attempts;
 create policy "Admins can delete attempts"
   on public.exam_attempts for delete
   using (public.is_admin());
 
 -- ATTEMPT SECTIONS:
+drop policy if exists "Users can view own attempt sections" on public.attempt_sections;
 create policy "Users can view own attempt sections"
   on public.attempt_sections for select
   using (
@@ -473,6 +499,7 @@ create policy "Users can view own attempt sections"
     )
   );
 
+drop policy if exists "Users can insert own attempt sections" on public.attempt_sections;
 create policy "Users can insert own attempt sections"
   on public.attempt_sections for insert
   with check (
@@ -482,6 +509,7 @@ create policy "Users can insert own attempt sections"
     )
   );
 
+drop policy if exists "Users can update own attempt sections" on public.attempt_sections;
 create policy "Users can update own attempt sections"
   on public.attempt_sections for update
   using (
@@ -492,6 +520,7 @@ create policy "Users can update own attempt sections"
   );
 
 -- ATTEMPT ANSWERS:
+drop policy if exists "Users can view own attempt answers" on public.attempt_answers;
 create policy "Users can view own attempt answers"
   on public.attempt_answers for select
   using (
@@ -501,6 +530,7 @@ create policy "Users can view own attempt answers"
     )
   );
 
+drop policy if exists "Users can insert and update own attempt answers" on public.attempt_answers;
 create policy "Users can insert and update own attempt answers"
   on public.attempt_answers for insert
   with check (
@@ -510,6 +540,7 @@ create policy "Users can insert and update own attempt answers"
     )
   );
 
+drop policy if exists "Users can update own attempt answers during in-progress attempt" on public.attempt_answers;
 create policy "Users can update own attempt answers during in-progress attempt"
   on public.attempt_answers for update
   using (
@@ -522,21 +553,25 @@ create policy "Users can update own attempt answers during in-progress attempt"
   );
 
 -- BOOKMARKS:
+drop policy if exists "Users can view and manage own bookmarks" on public.bookmarks;
 create policy "Users can view and manage own bookmarks"
   on public.bookmarks for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
 -- EXAM PARTICIPATION:
+drop policy if exists "Participation viewable by authenticated users" on public.exam_participation;
 create policy "Participation viewable by authenticated users"
   on public.exam_participation for select
   using (auth.role() = 'authenticated');
 
+drop policy if exists "Admins can manage participation" on public.exam_participation;
 create policy "Admins can manage participation"
   on public.exam_participation for all
   using (public.is_admin());
 
 -- EXAM SETTINGS:
+drop policy if exists "Exam settings viewable if exam viewable" on public.exam_settings;
 create policy "Exam settings viewable if exam viewable"
   on public.exam_settings for select
   using (
@@ -546,11 +581,13 @@ create policy "Exam settings viewable if exam viewable"
     )
   );
 
+drop policy if exists "Admins can manage exam settings" on public.exam_settings;
 create policy "Admins can manage exam settings"
   on public.exam_settings for all
   using (public.is_admin());
 
 -- AUDIT LOG:
+drop policy if exists "Admins can view and manage audit log" on public.answer_key_audit_log;
 create policy "Admins can view and manage audit log"
   on public.answer_key_audit_log for all
   using (public.is_admin());
