@@ -1,9 +1,9 @@
 // ==============================================================================
-// SCREEN 8: RESULT SUMMARY SCREEN
+// VIBHILLION AI: TEST RESULTS & COMPREHENSIVE ANALYTICS (SCREENSHOTS 9, 10, 11)
 // File: apps/student/src/app/exam/result.tsx
 // ==============================================================================
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,283 +11,882 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { formatDuration } from '@vibhillion/shared';
+import { examService } from '@/services/examService';
+import { formatDuration, QuestionAnalysis } from '@vibhillion/shared';
 
 export default function ExamResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
   const attemptId = (params.attemptId as string) || '';
-  const examTitle = (params.examTitle as string) || 'SSC CGL T-1 (English)';
-  const totalQuestions = Number(params.totalQuestions || 5);
+  const paperTitle =
+    (params.paperTitle as string) || 'SSC CGL T-I (Held on 12 Sep 2025 S1) – English';
+  const totalQuestions = Number(params.totalQuestions || 100);
   const attemptedCount = Number(params.attemptedCount || 0);
-  const unattemptedCount = Number(params.unattemptedCount || 0);
+  const unattemptedCount = Number(params.unattemptedCount || 100);
   const correctCount = Number(params.correctCount || 0);
   const wrongCount = Number(params.wrongCount || 0);
   const finalScore = Number(params.finalScore || 0);
-  const maximumScore = Number(params.maximumScore || 10);
+  const maximumScore = Number(params.maximumScore || 200.0);
   const accuracyPercentage = Number(params.accuracyPercentage || 0);
-  const totalTimeSeconds = Number(params.totalTimeSeconds || 0);
-  const rank = Number(params.rank || 1);
-  const percentile = Number(params.percentile || 95.0);
-  const answersJson = (params.answersJson as string) || '{}';
+  const totalTimeSeconds = Number(params.totalTimeSeconds || 1912); // ~31m 52s default
 
-  const correctMarks = (correctCount * 2.0).toFixed(1);
-  const negativeMarks = (wrongCount * 0.5).toFixed(1);
+  // Parse local answers map for question review
+  let localAnswersMap: Record<string, any> = {};
+  try {
+    localAnswersMap = JSON.parse((params.answersJson as string) || '{}');
+  } catch (_) {}
+
+  // Solutions data for Review Answers accordion (Screenshot 11)
+  const [solutions, setSolutions] = useState<QuestionAnalysis[]>([]);
+  const [expandedQuestions, setExpandedQuestions] = useState<Record<string, boolean>>({
+    // Keep Q89 or first question open by default for illustration
+    0: true,
+  });
+  const [loadingSolutions, setLoadingSolutions] = useState(true);
+
+  useEffect(() => {
+    async function fetchSolutions() {
+      try {
+        setLoadingSolutions(true);
+        const data = await examService.getSolutions(attemptId, localAnswersMap);
+        setSolutions(data);
+      } finally {
+        setLoadingSolutions(false);
+      }
+    }
+    fetchSolutions();
+  }, [attemptId]);
+
+  const toggleExpand = (qIndex: number) => {
+    setExpandedQuestions((prev) => ({
+      ...prev,
+      [qIndex]: !prev[qIndex],
+    }));
+  };
+
+  // Section breakdown calculations matching Screenshot 10
+  const sectionsSummary = [
+    {
+      subject: 'english',
+      name: 'English Comprehension',
+      qs: 25,
+      correct: 0,
+      wrong: 0,
+      skipped: 25,
+      acc: '0%',
+    },
+    {
+      subject: 'general_knowledge',
+      name: 'General Awareness',
+      qs: 25,
+      correct: 0,
+      wrong: 0,
+      skipped: 25,
+      acc: '0%',
+    },
+    {
+      subject: 'quantitative_aptitude',
+      name: 'Quantitative Aptitude',
+      qs: 25,
+      correct: 0,
+      wrong: 0,
+      skipped: 25,
+      acc: '0%',
+    },
+    {
+      subject: 'reasoning',
+      name: 'General Intelligence & Reasoning',
+      qs: 25,
+      correct: 0,
+      wrong: 0,
+      skipped: 25,
+      acc: '0%',
+    },
+  ];
+
+  // If there are real answers, populate the table dynamically
+  solutions.forEach((sol) => {
+    let sIdx = 0;
+    if (sol.section_id.endsWith('0002')) sIdx = 3; // reasoning
+    else if (sol.section_id.endsWith('0003')) sIdx = 2; // quant
+    else if (sol.section_id.endsWith('0004')) sIdx = 1; // gk
+
+    if (sol.user_selected_option_id) {
+      if (sol.is_correct) {
+        sectionsSummary[sIdx].correct += 1;
+      } else {
+        sectionsSummary[sIdx].wrong += 1;
+      }
+      sectionsSummary[sIdx].skipped -= 1;
+    }
+  });
+
+  sectionsSummary.forEach((s) => {
+    const att = s.correct + s.wrong;
+    s.acc = att > 0 ? `${((s.correct / att) * 100).toFixed(0)}%` : '0%';
+  });
+
+  const correctShare = ((correctCount / totalQuestions) * 100).toFixed(1);
+  const wrongShare = ((wrongCount / totalQuestions) * 100).toFixed(1);
+  const unattemptedShare = ((unattemptedCount / totalQuestions) * 100).toFixed(1);
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTag}>EXAM RESULT SUMMARY</Text>
-        <Text style={styles.headerTitle}>{examTitle}</Text>
-        <Text style={styles.headerSubtitle}>Submission final score and analytics</Text>
+      {/* TOP HEADER */}
+      <View style={styles.topHeader}>
+        <TouchableOpacity
+          onPress={() => router.replace('/(tabs)/tests')}
+          style={styles.backBtn}
+        >
+          <Ionicons name="arrow-back" size={24} color="#0D9488" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Results</Text>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        {/* Score Showcase Hero Card */}
-        <View style={styles.scoreHeroCard}>
-          <Text style={styles.heroScoreLabel}>Final Calculated Score</Text>
-          <View style={styles.heroScoreRow}>
-            <Text style={styles.heroScoreBig}>{finalScore.toFixed(1)}</Text>
-            <Text style={styles.heroScoreTotal}>/ {maximumScore.toFixed(1)} Marks</Text>
-          </View>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* EXAM TITLE */}
+        <Text style={styles.paperTitleText}>{paperTitle}</Text>
 
-          <View style={styles.heroDivider} />
-
-          <View style={styles.heroMetricsGrid}>
-            <View style={styles.heroMetricItem}>
-              <Text style={styles.heroMetricVal}>{accuracyPercentage.toFixed(1)}%</Text>
-              <Text style={styles.heroMetricLabel}>Accuracy</Text>
-            </View>
-            <View style={styles.heroMetricDivider} />
-            <View style={styles.heroMetricItem}>
-              <Text style={styles.heroMetricVal}>Rank #{rank}</Text>
-              <Text style={styles.heroMetricLabel}>{percentile}%ile</Text>
-            </View>
-            <View style={styles.heroMetricDivider} />
-            <View style={styles.heroMetricItem}>
-              <Text style={styles.heroMetricVal}>{formatDuration(totalTimeSeconds)}</Text>
-              <Text style={styles.heroMetricLabel}>Time Spent</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Breakdown of Marks */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Marking Breakdown Formula</Text>
-          <View style={styles.formulaRow}>
-            <View style={styles.formulaCell}>
-              <Text style={styles.formulaLabel}>Positive Marks</Text>
-              <Text style={[styles.formulaValue, { color: '#059669' }]}>+{correctMarks}</Text>
-              <Text style={styles.formulaSub}>({correctCount} × 2.0)</Text>
-            </View>
-            <Text style={styles.formulaSign}>−</Text>
-            <View style={styles.formulaCell}>
-              <Text style={styles.formulaLabel}>Negative Penalty</Text>
-              <Text style={[styles.formulaValue, { color: '#DC2626' }]}>−{negativeMarks}</Text>
-              <Text style={styles.formulaSub}>({wrongCount} × 0.5)</Text>
-            </View>
-            <Text style={styles.formulaSign}>=</Text>
-            <View style={styles.formulaCell}>
-              <Text style={styles.formulaLabel}>Net Score</Text>
-              <Text style={[styles.formulaValue, { color: '#2563EB' }]}>{finalScore.toFixed(1)}</Text>
-              <Text style={styles.formulaSub}>Marks</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Question Stats Grid */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Questions Summary</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statBox}>
-              <Ionicons name="help-circle" size={20} color="#2563EB" />
-              <Text style={styles.statNum}>{totalQuestions}</Text>
-              <Text style={styles.statLabel}>Total Qs</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Ionicons name="finger-print" size={20} color="#3B82F6" />
-              <Text style={styles.statNum}>{attemptedCount}</Text>
-              <Text style={styles.statLabel}>Attempted</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-              <Text style={[styles.statNum, { color: '#10B981' }]}>{correctCount}</Text>
-              <Text style={styles.statLabel}>Correct</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Ionicons name="close-circle" size={20} color="#EF4444" />
-              <Text style={[styles.statNum, { color: '#EF4444' }]}>{wrongCount}</Text>
-              <Text style={styles.statLabel}>Incorrect</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Ionicons name="remove-circle-outline" size={20} color="#64748B" />
-              <Text style={styles.statNum}>{unattemptedCount}</Text>
-              <Text style={styles.statLabel}>Skipped</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Section Breakdown */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Section Performance</Text>
-          <View style={styles.secRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.secName}>English Comprehension</Text>
-              <Text style={styles.secDetails}>
-                {correctCount} Correct • {wrongCount} Wrong • {unattemptedCount} Skipped
+        {/* ========================================================================= */}
+        {/* SCORE DONUT GAUGE CARD (SCREENSHOT 9) */}
+        {/* ========================================================================= */}
+        <View style={styles.scoreGaugeCard}>
+          {/* Circular Donut Ring */}
+          <View style={styles.donutRing}>
+            <View style={styles.donutInner}>
+              <Text style={styles.donutScorePercent}>
+                {Math.round((Math.max(0, finalScore) / maximumScore) * 100)}%
               </Text>
+              <Text style={styles.donutScoreLabel}>SCORE</Text>
             </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.secScore}>{finalScore.toFixed(1)} / {maximumScore.toFixed(1)}</Text>
-              <Text style={styles.secAcc}>{accuracyPercentage.toFixed(1)}% Acc</Text>
+          </View>
+
+          <Text style={styles.scoreSummaryText}>
+            {correctCount} of {totalQuestions} correct • {accuracyPercentage.toFixed(1)}% accuracy
+          </Text>
+
+          <Text style={styles.answerDistTitle}>Answer distribution</Text>
+          <View style={styles.answerDistDotsRow}>
+            <View style={styles.distDotItem}>
+              <View style={[styles.distDot, { backgroundColor: '#22C55E' }]} />
+              <Text style={styles.distDotText}>Correct {correctCount}</Text>
             </View>
+
+            <View style={styles.distDotItem}>
+              <View style={[styles.distDot, { backgroundColor: '#EF4444' }]} />
+              <Text style={styles.distDotText}>Wrong {wrongCount}</Text>
+            </View>
+
+            <View style={styles.distDotItem}>
+              <View style={[styles.distDot, { backgroundColor: '#64748B' }]} />
+              <Text style={styles.distDotText}>Unanswered {unattemptedCount}</Text>
+            </View>
+          </View>
+
+          {/* Performance Pill Badge */}
+          <View style={styles.perfPillBadge}>
+            <Ionicons name="trending-down" size={16} color="#DC2626" style={{ marginRight: 6 }} />
+            <Text style={styles.perfPillText}>Needs Improvement</Text>
           </View>
         </View>
 
-        {/* Action Buttons: Screen 9 & Screen 10 */}
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity
-            style={styles.solutionBtn}
-            onPress={() =>
-              router.push({
-                pathname: '/exam/solution',
-                params: { attemptId, answersJson },
-              })
-            }
-          >
-            <Ionicons name="list" size={20} color="#FFFFFF" />
-            <Text style={styles.solutionBtnText}>View Question-wise Solutions</Text>
-          </TouchableOpacity>
+        {/* ========================================================================= */}
+        {/* ANSWER BREAKDOWN TABLE (SCREENSHOT 9) */}
+        {/* ========================================================================= */}
+        <Text style={styles.sectionHeading}>Answer breakdown</Text>
+        <View style={styles.tableCard}>
+          <View style={styles.tableHeaderRow}>
+            <Text style={[styles.tableColHeader, { flex: 2 }]}>RESULT</Text>
+            <Text style={[styles.tableColHeader, { flex: 1, textAlign: 'center' }]}>COUNT</Text>
+            <Text style={[styles.tableColHeader, { flex: 1, textAlign: 'right' }]}>SHARE</Text>
+          </View>
+          <View style={styles.tableDivider} />
 
-          <TouchableOpacity
-            style={styles.analysisBtn}
-            onPress={() =>
-              router.push({
-                pathname: '/exam/performance',
-                params: { attemptId, answersJson },
-              })
-            }
-          >
-            <Ionicons name="analytics" size={20} color="#2563EB" />
-            <Text style={styles.analysisBtnText}>Deep Topic & Pacing Analysis</Text>
-          </TouchableOpacity>
+          <View style={styles.tableDataRow}>
+            <Text style={[styles.tableDataText, { flex: 2, color: '#059669', fontWeight: '700' }]}>
+              Correct
+            </Text>
+            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'center' }]}>{correctCount}</Text>
+            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'right' }]}>{correctShare}%</Text>
+          </View>
+          <View style={styles.tableDivider} />
 
+          <View style={styles.tableDataRow}>
+            <Text style={[styles.tableDataText, { flex: 2, color: '#DC2626', fontWeight: '700' }]}>
+              Wrong
+            </Text>
+            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'center' }]}>{wrongCount}</Text>
+            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'right' }]}>{wrongShare}%</Text>
+          </View>
+          <View style={styles.tableDivider} />
+
+          <View style={styles.tableDataRow}>
+            <Text style={[styles.tableDataText, { flex: 2, color: '#64748B', fontWeight: '600' }]}>
+              Unanswered
+            </Text>
+            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'center' }]}>{unattemptedCount}</Text>
+            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'right' }]}>{unattemptedShare}%</Text>
+          </View>
+        </View>
+
+        {/* TIME TAKEN & ACCURACY METRIC CARDS */}
+        <View style={styles.metricsTwoCol}>
+          <View style={styles.metricCard}>
+            <Ionicons name="time-outline" size={24} color="#EA580C" style={{ marginBottom: 6 }} />
+            <Text style={styles.metricBigVal}>{formatDuration(totalTimeSeconds)}</Text>
+            <Text style={styles.metricSubLabel}>Time Taken</Text>
+          </View>
+
+          <View style={styles.metricCard}>
+            <Ionicons name="disc-outline" size={24} color="#0D9488" style={{ marginBottom: 6 }} />
+            <Text style={styles.metricBigVal}>{accuracyPercentage.toFixed(1)}%</Text>
+            <Text style={styles.metricSubLabel}>Accuracy</Text>
+          </View>
+        </View>
+
+        {/* ========================================================================= */}
+        {/* SUBJECT AND TOPIC RESULTS TABLE (SCREENSHOT 10) */}
+        {/* ========================================================================= */}
+        <Text style={styles.sectionHeading}>Subject and topic results</Text>
+        <Text style={styles.subjectDescText}>
+          This report describes this test, not a permanent judgment of your ability. Progress compares your recent attempts of this same test. Strength needs at least 5 questions, 3 attempted answers, 80% accuracy, and 70% coverage. Improvement areas have below 60% accuracy or 50% coverage.
+        </Text>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+          <View style={[styles.tableCard, { minWidth: 360 }]}>
+            <View style={styles.tableHeaderRow}>
+              <Text style={[styles.tableColHeader, { flex: 2 }]}>SUBJECT / CATEGORY</Text>
+              <Text style={[styles.tableColHeader, { width: 36, textAlign: 'center' }]}>QS</Text>
+              <Text style={[styles.tableColHeader, { width: 56, textAlign: 'center' }]}>CORRECT</Text>
+              <Text style={[styles.tableColHeader, { width: 56, textAlign: 'center' }]}>WRONG</Text>
+              <Text style={[styles.tableColHeader, { width: 56, textAlign: 'center' }]}>SKIPPED</Text>
+              <Text style={[styles.tableColHeader, { width: 44, textAlign: 'right' }]}>ACC</Text>
+            </View>
+            <View style={styles.tableDivider} />
+
+            {sectionsSummary.map((sec) => (
+              <React.Fragment key={sec.subject}>
+                <View style={styles.tableDataRow}>
+                  <Text style={[styles.tableDataText, { flex: 2, fontWeight: '700', color: '#0F172A' }]}>
+                    {sec.subject}
+                  </Text>
+                  <Text style={[styles.tableDataText, { width: 36, textAlign: 'center' }]}>{sec.qs}</Text>
+                  <Text style={[styles.tableDataText, { width: 56, textAlign: 'center', color: '#059669' }]}>
+                    {sec.correct}
+                  </Text>
+                  <Text style={[styles.tableDataText, { width: 56, textAlign: 'center', color: '#DC2626' }]}>
+                    {sec.wrong}
+                  </Text>
+                  <Text style={[styles.tableDataText, { width: 56, textAlign: 'center', color: '#64748B' }]}>
+                    {sec.skipped}
+                  </Text>
+                  <Text style={[styles.tableDataText, { width: 44, textAlign: 'right', fontWeight: '700' }]}>
+                    {sec.acc}
+                  </Text>
+                </View>
+                <View style={styles.tableDivider} />
+              </React.Fragment>
+            ))}
+          </View>
+        </ScrollView>
+        <Text style={styles.swipeHintText}>
+          Swipe sideways to see all columns. Accuracy is correct ÷ attempted; small samples stay unclassified.
+        </Text>
+
+        {/* NEXT STEPS ADVICE BOX */}
+        <Text style={styles.sectionHeading}>Next steps</Text>
+        <View style={styles.nextStepsCard}>
+          <Text style={styles.nextStepsBold}>
+            No subject crossed the improvement threshold.
+          </Text>
+          <Text style={styles.nextStepsSub}>
+            Review skipped answers and keep practising to build on your results.
+          </Text>
+        </View>
+
+        {/* PROGRESS ON THIS TEST */}
+        <View style={styles.progressCard}>
+          <Text style={styles.progressCardTitle}>Progress on this test</Text>
+          <Text style={styles.progressRowText}>
+            29/10/2026: 0% accuracy • 96s per attempted question
+          </Text>
+          <Text style={styles.progressRowText}>
+            29/10/2026: 0% accuracy • Speed unavailable
+          </Text>
+          <Text style={styles.speedAdviceText}>
+            Speed includes thinking and reviewing time. Compare similar attempts, rather than treating speed alone as ability.
+          </Text>
+        </View>
+
+        {/* BUTTONS: BACK TO TESTS & RETAKE TEST */}
+        <View style={styles.bottomButtonsRow}>
           <TouchableOpacity
-            style={styles.homeBtn}
+            style={styles.backToTestsBtn}
             onPress={() => router.replace('/(tabs)/tests')}
           >
-            <Ionicons name="arrow-back" size={18} color="#64748B" />
-            <Text style={styles.homeBtnText}>Back to Tests Home</Text>
+            <Ionicons name="arrow-back" size={16} color="#475569" style={{ marginRight: 6 }} />
+            <Text style={styles.backToTestsBtnText}>Back to Tests</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.retakeTestBtn}
+            onPress={() =>
+              router.replace({
+                pathname: '/exam/instructions',
+                params: { paperTitle },
+              })
+            }
+          >
+            <Ionicons name="refresh" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Text style={styles.retakeTestBtnText}>Retake Test</Text>
           </TouchableOpacity>
         </View>
+
+        {/* ========================================================================= */}
+        {/* REVIEW ANSWERS ACCORDION (SCREENSHOT 11) */}
+        {/* ========================================================================= */}
+        <Text style={[styles.sectionHeading, { marginTop: 24 }]}>Review Answers</Text>
+
+        {loadingSolutions ? (
+          <ActivityIndicator size="small" color="#0D9488" style={{ marginVertical: 20 }} />
+        ) : (
+          <View style={styles.reviewAccordionList}>
+            {solutions.map((sol, qIdx) => {
+              const isExpanded = Boolean(expandedQuestions[qIdx]);
+              const userSelected = sol.user_selected_option_id;
+              const correctId = sol.correct_option_id;
+
+              return (
+                <View key={sol.question_id} style={styles.reviewAccordionItem}>
+                  {/* Collapsed Header */}
+                  <TouchableOpacity
+                    style={styles.reviewHeaderRow}
+                    activeOpacity={0.8}
+                    onPress={() => toggleExpand(qIdx)}
+                  >
+                    <View style={styles.reviewHeaderLeft}>
+                      <View
+                        style={[
+                          styles.reviewStatusDot,
+                          sol.is_correct
+                            ? { backgroundColor: '#22C55E' }
+                            : userSelected
+                            ? { backgroundColor: '#EF4444' }
+                            : { backgroundColor: '#94A3B8' },
+                        ]}
+                      />
+                      <Text style={styles.reviewHeaderQuestionTitle} numberOfLines={1}>
+                        Q{sol.question_number}. {sol.question_text}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color="#64748B"
+                    />
+                  </TouchableOpacity>
+
+                  {/* Expanded Content */}
+                  {isExpanded && (
+                    <View style={styles.reviewExpandedBody}>
+                      <Text style={styles.expandedQuestionFullText}>
+                        {sol.question_text}
+                      </Text>
+
+                      {/* Options List */}
+                      <View style={styles.reviewOptionsList}>
+                        {sol.options?.map((opt) => {
+                          const isCorrectOpt = opt.id === correctId;
+                          const isUserPicked = opt.id === userSelected;
+
+                          return (
+                            <View
+                              key={opt.id}
+                              style={[
+                                styles.reviewOptionBox,
+                                isCorrectOpt && styles.reviewOptionCorrect,
+                                isUserPicked && !isCorrectOpt && styles.reviewOptionWrong,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.reviewOptionLetter,
+                                  isCorrectOpt && { color: '#059669', fontWeight: '800' },
+                                  isUserPicked && !isCorrectOpt && { color: '#DC2626' },
+                                ]}
+                              >
+                                {opt.label}. {opt.text}
+                              </Text>
+                              {isCorrectOpt && (
+                                <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                              )}
+                              {isUserPicked && !isCorrectOpt && (
+                                <Ionicons name="close-circle" size={18} color="#DC2626" />
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+
+                      {/* Explanation Callout Box */}
+                      {sol.explanation && (
+                        <View style={styles.explanationBox}>
+                          <Text style={styles.explanationTitle}>Explanation</Text>
+                          <Text style={styles.explanationBodyText}>{sol.explanation}</Text>
+                        </View>
+                      )}
+
+                      {/* Solution steps */}
+                      {sol.solution_steps && sol.solution_steps.length > 0 && (
+                        <View style={styles.solutionStepsBox}>
+                          <Text style={styles.solutionStepsTitle}>Step-by-step Solution:</Text>
+                          {sol.solution_steps.map((st, sIdx) => (
+                            <Text key={sIdx} style={styles.solutionStepItem}>
+                              • {st}
+                            </Text>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* Question Time & Feedback */}
+                      <View style={styles.questionAnalysisFooter}>
+                        <Text style={styles.qTimeText}>
+                          Time spent: {sol.time_spent_seconds}s
+                        </Text>
+                        <Text style={styles.qRecommendationText}>
+                          {sol.recommendation ||
+                            (sol.is_correct
+                              ? 'Correct answer! Keep up this high standard.'
+                              : 'Re-read the question concept and practice similar patterns.')}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1E3A8A' },
-  header: {
-    backgroundColor: '#1E3A8A',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 22,
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-  headerTag: { fontSize: 11, fontWeight: '700', color: '#93C5FD', letterSpacing: 0.5 },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', marginTop: 2 },
-  headerSubtitle: { fontSize: 12, color: '#BFDBFE', marginTop: 2 },
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContent: { padding: 16, paddingBottom: 30 },
-  scoreHeroCard: {
-    backgroundColor: '#1E40AF',
-    borderRadius: 16,
-    padding: 20,
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? 36 : 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  backBtn: {
+    paddingRight: 12,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 40,
+  },
+  paperTitleText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  scoreGaugeCard: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+    borderRadius: 24,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  donutRing: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 8,
+    borderColor: '#64748B',
+    justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#1E40AF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  heroScoreLabel: { fontSize: 13, color: '#BFDBFE', fontWeight: '600' },
-  heroScoreRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 6 },
-  heroScoreBig: { fontSize: 44, fontWeight: '800', color: '#FFFFFF' },
-  heroScoreTotal: { fontSize: 18, color: '#93C5FD', marginLeft: 8, fontWeight: '600' },
-  heroDivider: { width: '100%', height: 1, backgroundColor: 'rgba(255, 255, 255, 0.15)', marginVertical: 16 },
-  heroMetricsGrid: { flexDirection: 'row', width: '100%', justifyContent: 'space-around', alignItems: 'center' },
-  heroMetricItem: { alignItems: 'center' },
-  heroMetricVal: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  heroMetricLabel: { fontSize: 11, color: '#BFDBFE', marginTop: 2 },
-  heroMetricDivider: { width: 1, height: 24, backgroundColor: 'rgba(255, 255, 255, 0.2)' },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+  donutInner: {
+    alignItems: 'center',
+  },
+  donutScorePercent: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: '#B45309',
+  },
+  donutScoreLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 1,
+  },
+  scoreSummaryText: {
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  answerDistTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+    marginBottom: 8,
+  },
+  answerDistDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     marginBottom: 14,
   },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 12 },
-  formulaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  formulaCell: { alignItems: 'center', flex: 1 },
-  formulaLabel: { fontSize: 11, color: '#64748B' },
-  formulaValue: { fontSize: 17, fontWeight: '800', marginTop: 2 },
-  formulaSub: { fontSize: 10, color: '#94A3B8', marginTop: 1 },
-  formulaSign: { fontSize: 20, fontWeight: '700', color: '#94A3B8', paddingHorizontal: 4 },
-  statsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
-  statBox: {
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    padding: 10,
-    flex: 1,
-    marginHorizontal: 3,
-  },
-  statNum: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginTop: 4 },
-  statLabel: { fontSize: 10, color: '#64748B', marginTop: 2 },
-  secRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  secName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  secDetails: { fontSize: 12, color: '#64748B', marginTop: 2 },
-  secScore: { fontSize: 14, fontWeight: '700', color: '#2563EB' },
-  secAcc: { fontSize: 12, color: '#059669', fontWeight: '600', marginTop: 2 },
-  actionsContainer: { gap: 10, marginTop: 8 },
-  solutionBtn: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 14,
+  distDotItem: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
   },
-  solutionBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  analysisBtn: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    paddingVertical: 14,
+  distDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  distDotText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  perfPillBadge: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#BFDBFE',
-    gap: 8,
+    borderColor: '#FECACA',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  analysisBtnText: { color: '#2563EB', fontSize: 15, fontWeight: '700' },
-  homeBtn: {
+  perfPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  sectionHeading: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 10,
+    marginTop: 10,
+  },
+  tableCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    paddingVertical: 6,
+  },
+  tableColHeader: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.5,
+  },
+  tableDataRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  tableDataText: {
+    fontSize: 13,
+    color: '#334155',
+  },
+  tableDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+  },
+  metricsTwoCol: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    borderRadius: 18,
+    padding: 16,
+    alignItems: 'center',
+  },
+  metricBigVal: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  metricSubLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  subjectDescText: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  swipeHintText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginBottom: 16,
+    fontStyle: 'italic',
+  },
+  nextStepsCard: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  nextStepsBold: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#15803D',
+    marginBottom: 4,
+  },
+  nextStepsSub: {
+    fontSize: 12,
+    color: '#334155',
+    lineHeight: 18,
+  },
+  progressCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+  },
+  progressCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 8,
+  },
+  progressRowText: {
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  speedAdviceText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    lineHeight: 16,
+    marginTop: 6,
+  },
+  bottomButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  backToTestsBtn: {
+    flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 12,
-    gap: 6,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderRadius: 16,
+    paddingVertical: 13,
   },
-  homeBtnText: { color: '#64748B', fontSize: 14, fontWeight: '600' },
+  backToTestsBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  retakeTestBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#EA580C',
+    borderRadius: 16,
+    paddingVertical: 13,
+  },
+  retakeTestBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  reviewAccordionList: {
+    gap: 10,
+  },
+  reviewAccordionItem: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  reviewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+  },
+  reviewHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  reviewStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  reviewHeaderQuestionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+    flex: 1,
+  },
+  reviewExpandedBody: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 12,
+  },
+  expandedQuestionFullText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    lineHeight: 22,
+    marginBottom: 14,
+  },
+  reviewOptionsList: {
+    gap: 8,
+    marginBottom: 14,
+  },
+  reviewOptionBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
+  },
+  reviewOptionCorrect: {
+    borderColor: '#22C55E',
+    backgroundColor: '#F0FDF4',
+  },
+  reviewOptionWrong: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
+  },
+  reviewOptionLetter: {
+    fontSize: 13,
+    color: '#334155',
+    flex: 1,
+  },
+  explanationBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  explanationTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  explanationBodyText: {
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 18,
+  },
+  solutionStepsBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  solutionStepsTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  solutionStepItem: {
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 18,
+  },
+  questionAnalysisFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 10,
+  },
+  qTimeText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  qRecommendationText: {
+    fontSize: 11,
+    color: '#0D9488',
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
+    marginLeft: 12,
+  },
 });

@@ -1,9 +1,9 @@
 // ==============================================================================
-// SCREEN 5: TEST INSTRUCTIONS & MODE SELECTION
+// VIBHILLION AI: TEST INSTRUCTIONS (MATCHING SCREENSHOTS 4 & 5)
 // File: apps/student/src/app/exam/instructions.tsx
 // ==============================================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,306 +11,459 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
-  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { examService } from '@/services/examService';
-import { Exam } from '@vibhillion/shared';
 
 export default function TestInstructionsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const examId = (params.examId as string) || 'e0000001-0000-0000-0000-000000000001';
-  const sectionId = (params.sectionId as string) || 'a0000001-0000-0000-0000-000000000001';
-  const sectionName = (params.sectionName as string) || 'English Comprehension';
+  const paperTitle =
+    (params.paperTitle as string) || 'SSC CGL T-I (Held on 12 Sep 2025 S1) – English';
 
-  const [exam, setExam] = useState<Exam | null>(null);
-  const [selectedMode, setSelectedMode] = useState<'timed' | 'practice'>('timed');
-  const [loading, setLoading] = useState(true);
+  const [hasAgreed, setHasAgreed] = useState(false);
 
-  useEffect(() => {
-    async function loadExam() {
-      try {
-        setLoading(true);
-        const data = await examService.getExamDetails(examId);
-        setExam(data);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadExam();
-  }, [examId]);
-
-  const handleStartTest = () => {
-    if (selectedMode === 'timed') {
-      router.push({
-        pathname: '/exam/timed',
-        params: { examId, sectionId, sectionName },
-      });
-    } else {
-      router.push({
-        pathname: '/exam/practice',
-        params: { examId, sectionId, sectionName },
-      });
-    }
+  const handleContinue = () => {
+    if (!hasAgreed) return;
+    router.push({
+      pathname: '/exam/configure',
+      params: {
+        examId,
+        paperTitle,
+      },
+    });
   };
-
-  if (loading || !exam) {
-    return (
-      <SafeAreaView style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={styles.loadingText}>Loading test guidelines...</Text>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+      {/* TOP HEADER */}
+      <View style={styles.topHeader}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={24} color="#0D9488" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Test Instructions</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {paperTitle}
+        </Text>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        {/* Test Summary Card */}
-        <View style={styles.summaryCard}>
-          <Text style={styles.examTag}>SSC CGL Tier-1 Previous Year Paper</Text>
-          <Text style={styles.examTitle}>{exam.title}</Text>
-          <Text style={styles.sectionHighlight}>Active Section: {sectionName}</Text>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* HERO ICON & TITLE */}
+        <View style={styles.heroSection}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="document-text-outline" size={32} color="#0D9488" />
+          </View>
+          <Text style={styles.paperTitleText}>{paperTitle}</Text>
+          <Text style={styles.categorySubText}>SSC</Text>
+        </View>
 
-          <View style={styles.metaGrid}>
-            <View style={styles.metaCell}>
-              <Text style={styles.metaLabel}>Total Questions</Text>
-              <Text style={styles.metaValue}>25</Text>
-            </View>
-            <View style={styles.metaCell}>
-              <Text style={styles.metaLabel}>Section Duration</Text>
-              <Text style={styles.metaValue}>15 Mins</Text>
-            </View>
-            <View style={styles.metaCell}>
-              <Text style={styles.metaLabel}>Max Marks</Text>
-              <Text style={styles.metaValue}>50.0</Text>
-            </View>
+        {/* 3 STAT BADGES */}
+        <View style={styles.statBadgesRow}>
+          {/* Duration */}
+          <View style={[styles.statBadge, { backgroundColor: '#F0FDF4' }]}>
+            <Ionicons name="time-outline" size={22} color="#0D9488" />
+            <Text style={[styles.statValue, { color: '#0F172A' }]}>60</Text>
+            <Text style={styles.statLabel}>minutes</Text>
+          </View>
+
+          {/* Total Questions */}
+          <View style={[styles.statBadge, { backgroundColor: '#FFF7ED' }]}>
+            <Ionicons name="disc-outline" size={22} color="#EA580C" />
+            <Text style={[styles.statValue, { color: '#0F172A' }]}>100</Text>
+            <Text style={styles.statLabel}>questions</Text>
+          </View>
+
+          {/* Difficulty */}
+          <View style={[styles.statBadge, { backgroundColor: '#FAF5FF' }]}>
+            <Text style={[styles.statValue, { color: '#D97706', fontSize: 16, marginTop: 4 }]}>
+              Medium
+            </Text>
+            <Text style={styles.statLabel}>difficulty</Text>
           </View>
         </View>
 
-        {/* Official Marking Scheme */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Marking Scheme</Text>
-
-          <View style={styles.markingRow}>
-            <View style={[styles.markingBadge, { backgroundColor: '#DEF7EC' }]}>
-              <Ionicons name="add-circle" size={18} color="#03543F" />
-              <Text style={[styles.markingBadgeText, { color: '#03543F' }]}>+2.0 Marks</Text>
-            </View>
-            <Text style={styles.markingDesc}>For each correct answer</Text>
+        {/* MARKING SCHEME CARD */}
+        <Text style={styles.sectionHeaderTitle}>Marking scheme</Text>
+        <View style={styles.cardContainer}>
+          <View style={styles.tableRow}>
+            <Text style={styles.tableLabel}>Duration</Text>
+            <Text style={styles.tableValue}>60 minutes</Text>
           </View>
+          <View style={styles.tableDivider} />
 
-          <View style={styles.markingRow}>
-            <View style={[styles.markingBadge, { backgroundColor: '#FDE8E8' }]}>
-              <Ionicons name="remove-circle" size={18} color="#9B1C1C" />
-              <Text style={[styles.markingBadgeText, { color: '#9B1C1C' }]}>-0.5 Marks</Text>
-            </View>
-            <Text style={styles.markingDesc}>Penalty for each incorrect answer</Text>
+          <View style={styles.tableRow}>
+            <Text style={styles.tableLabel}>Total questions</Text>
+            <Text style={styles.tableValue}>100</Text>
           </View>
+          <View style={styles.tableDivider} />
 
-          <View style={styles.markingRow}>
-            <View style={[styles.markingBadge, { backgroundColor: '#F3F4F6' }]}>
-              <Ionicons name="ellipse-outline" size={18} color="#4B5563" />
-              <Text style={[styles.markingBadgeText, { color: '#4B5563' }]}>0.0 Marks</Text>
-            </View>
-            <Text style={styles.markingDesc}>No penalty for unattempted questions</Text>
+          <View style={styles.tableRow}>
+            <Text style={styles.tableLabel}>Marks per question</Text>
+            <Text style={[styles.tableValue, { color: '#059669', fontWeight: '700' }]}>+2</Text>
+          </View>
+          <View style={styles.tableDivider} />
+
+          <View style={styles.tableRow}>
+            <Text style={styles.tableLabel}>Negative marking</Text>
+            <Text style={[styles.tableValue, { color: '#DC2626', fontWeight: '700' }]}>
+              -0.5 per wrong answer
+            </Text>
+          </View>
+          <View style={styles.tableDivider} />
+
+          <View style={styles.tableRow}>
+            <Text style={styles.tableLabel}>Unattempted</Text>
+            <Text style={styles.tableValue}>No penalty</Text>
           </View>
         </View>
 
-        {/* Mode Selection */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Choose Exam Mode</Text>
+        {/* QUESTION PALETTE LEGEND */}
+        <Text style={styles.sectionHeaderTitle}>Question palette</Text>
+        <View style={styles.cardContainer}>
+          <View style={styles.legendRow}>
+            <View style={[styles.legendSquare, { backgroundColor: '#22C55E' }]} />
+            <Text style={styles.legendLabel}>Answered</Text>
+          </View>
 
-          <TouchableOpacity
-            style={[styles.modeCard, selectedMode === 'timed' && styles.modeCardActive]}
-            onPress={() => setSelectedMode('timed')}
-          >
-            <View style={styles.modeRadio}>
-              {selectedMode === 'timed' && <View style={styles.radioInner} />}
-            </View>
-            <View style={styles.modeTextContainer}>
-              <View style={styles.modeHeaderRow}>
-                <Text style={styles.modeTitle}>Timed Mode</Text>
-                <View style={styles.modePill}>
-                  <Text style={styles.modePillText}>Exam Simulation</Text>
-                </View>
-              </View>
-              <Text style={styles.modeDesc}>
-                Strict decreasing countdown timer (15 mins). Auto-submits on timeout. Exact SSC CGL interface conditions.
-              </Text>
-            </View>
-          </TouchableOpacity>
+          <View style={styles.legendRow}>
+            <View style={[styles.legendSquare, { backgroundColor: '#EF4444' }]} />
+            <Text style={styles.legendLabel}>Not answered (visited but skipped)</Text>
+          </View>
 
-          <TouchableOpacity
-            style={[styles.modeCard, selectedMode === 'practice' && styles.modeCardActive]}
-            onPress={() => setSelectedMode('practice')}
-          >
-            <View style={styles.modeRadio}>
-              {selectedMode === 'practice' && <View style={styles.radioInner} />}
+          <View style={styles.legendRow}>
+            <View style={[styles.legendSquare, { backgroundColor: '#A855F7' }]} />
+            <Text style={styles.legendLabel}>Marked for review</Text>
+          </View>
+
+          <View style={styles.legendRow}>
+            <View
+              style={[
+                styles.legendSquare,
+                { backgroundColor: '#A855F7', position: 'relative' },
+              ]}
+            >
+              <View
+                style={{
+                  position: 'absolute',
+                  top: -2,
+                  right: -2,
+                  width: 7,
+                  height: 7,
+                  borderRadius: 4,
+                  backgroundColor: '#22C55E',
+                }}
+              />
             </View>
-            <View style={styles.modeTextContainer}>
-              <View style={styles.modeHeaderRow}>
-                <Text style={styles.modeTitle}>Practice Mode</Text>
-                <View style={[styles.modePill, { backgroundColor: '#FEF3C7' }]}>
-                  <Text style={[styles.modePillText, { color: '#92400E' }]}>Self-Paced</Text>
-                </View>
-              </View>
-              <Text style={styles.modeDesc}>
-                No time pressure. Timer counts forward from 00:00. View instant explanations and step-by-step solutions at your own pace.
-              </Text>
-            </View>
-          </TouchableOpacity>
+            <Text style={styles.legendLabel}>Answered + marked for review</Text>
+          </View>
+
+          <View style={styles.legendRow}>
+            <View
+              style={[
+                styles.legendSquare,
+                { backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#CBD5E1' },
+              ]}
+            />
+            <Text style={styles.legendLabel}>Not visited yet</Text>
+          </View>
         </View>
 
-        {/* General Guidelines */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Exam Guidelines</Text>
-          <Text style={styles.bulletText}>• You can navigate between questions using Previous and Next buttons.</Text>
-          <Text style={styles.bulletText}>• Use 'Mark for Review' to bookmark questions for second checks.</Text>
-          <Text style={styles.bulletText}>• Answers are saved automatically in real time.</Text>
-          <Text style={styles.bulletText}>• Do not close the app or navigate away during timed examination.</Text>
-        </View>
-      </ScrollView>
-
-      {/* Start Button Footer */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.startButton} onPress={handleStartTest}>
-          <Text style={styles.startButtonText}>
-            Start {selectedMode === 'timed' ? 'Timed Test' : 'Practice Session'}
+        {/* INSTRUCTIONS LIST */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 20, marginBottom: 10 }}>
+          <Ionicons name="list" size={18} color="#0D9488" style={{ marginRight: 6 }} />
+          <Text style={[styles.sectionHeaderTitle, { marginTop: 0, marginBottom: 0 }]}>
+            Instructions
           </Text>
-          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+        </View>
+
+        <View style={styles.cardContainer}>
+          {[
+            'The test contains 100 questions to be attempted in 60 minutes.',
+            'Each correct answer carries 2 mark. 0.5 marks deducted for incorrect answers.',
+            'Navigate between questions using the question palette (grid icon in the bottom bar).',
+            'Use "Mark" in the top bar to flag a question for review; the palette shows marked questions in purple.',
+            '"Mark & Next" marks the current question and advances in one tap - useful when you want to come back later.',
+            'Answers are auto-saved as you work. Reopening the app resumes your saved attempt; timed tests keep running. Choosing Quit ends the attempt.',
+          ].map((instruction, idx) => (
+            <View key={idx} style={styles.instructionRow}>
+              <View style={styles.numBadge}>
+                <Text style={styles.numBadgeText}>{idx + 1}</Text>
+              </View>
+              <Text style={styles.instructionText}>{instruction}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* WARNING BANNER */}
+        <View style={styles.warningBox}>
+          <Ionicons name="warning-outline" size={20} color="#D97706" style={{ marginRight: 8, marginTop: 2 }} />
+          <Text style={styles.warningText}>
+            In timed mode, the timer cannot be paused. Refreshing or reopening the app does not reset time.
+          </Text>
+        </View>
+
+        {/* AGREEMENT CHECKBOX */}
+        <TouchableOpacity
+          style={styles.checkboxRow}
+          activeOpacity={0.8}
+          onPress={() => setHasAgreed(!hasAgreed)}
+        >
+          <View
+            style={[
+              styles.checkboxBox,
+              hasAgreed && { backgroundColor: '#0D9488', borderColor: '#0D9488' },
+            ]}
+          >
+            {hasAgreed && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+          </View>
+          <Text style={styles.checkboxLabel}>
+            I have read and understood all the instructions above. I am ready to begin the test.
+          </Text>
         </TouchableOpacity>
-      </View>
+
+        {/* CONTINUE BUTTON */}
+        <TouchableOpacity
+          style={[styles.continueBtn, !hasAgreed && styles.continueBtnDisabled]}
+          activeOpacity={hasAgreed ? 0.85 : 1}
+          onPress={handleContinue}
+          disabled={!hasAgreed}
+        >
+          <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+          <Text style={styles.continueBtnText}>Continue</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1E3A8A' },
-  header: {
-    backgroundColor: '#1E3A8A',
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingTop: Platform.OS === 'android' ? 36 : 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  backButton: { marginRight: 12 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContent: { padding: 16, paddingBottom: 20 },
-  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  loadingText: { marginTop: 12, fontSize: 14, color: '#64748B' },
-  summaryCard: {
+  backBtn: {
+    paddingRight: 12,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    flex: 1,
+  },
+  container: {
+    flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 14,
   },
-  examTag: { fontSize: 11, fontWeight: '700', color: '#2563EB', textTransform: 'uppercase' },
-  examTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A', marginTop: 4, lineHeight: 22 },
-  sectionHighlight: { fontSize: 13, fontWeight: '600', color: '#059669', marginTop: 4 },
-  metaGrid: {
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 40,
+  },
+  heroSection: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  iconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  paperTitleText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  categorySubText: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  statBadgesRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 14,
+    gap: 10,
+    marginBottom: 20,
   },
-  metaCell: { alignItems: 'center', flex: 1 },
-  metaLabel: { fontSize: 11, color: '#64748B' },
-  metaValue: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginTop: 2 },
-  sectionCard: {
+  statBadge: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  sectionHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 10,
+    marginTop: 10,
+  },
+  cardContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 14,
   },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 12 },
-  markingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  markingBadge: {
+  tableRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  tableLabel: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  tableValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  tableDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+  },
+  legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
-    minWidth: 104,
+    paddingVertical: 7,
   },
-  markingBadgeText: { fontSize: 12, fontWeight: '700' },
-  markingDesc: { fontSize: 13, color: '#334155', marginLeft: 10, flex: 1 },
-  modeCard: {
+  legendSquare: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    marginRight: 12,
+  },
+  legendLabel: {
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  instructionRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+  },
+  numBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+    marginTop: 2,
+  },
+  numBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0D9488',
+  },
+  instructionText: {
+    fontSize: 13,
+    color: '#475569',
+    flex: 1,
+    lineHeight: 20,
+  },
+  warningBox: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 14,
     padding: 14,
-    borderRadius: 12,
+    marginTop: 10,
+    marginBottom: 16,
+  },
+  warningText: {
+    fontSize: 12,
+    color: '#B45309',
+    flex: 1,
+    lineHeight: 18,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingVertical: 6,
+  },
+  checkboxBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    marginBottom: 10,
-  },
-  modeCardActive: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
-  },
-  modeRadio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#2563EB',
+    borderColor: '#CBD5E1',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
-    marginTop: 2,
   },
-  radioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#2563EB',
+  checkboxLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    flex: 1,
+    lineHeight: 18,
   },
-  modeTextContainer: { flex: 1 },
-  modeHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  modeTitle: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  modePill: {
-    backgroundColor: '#DEF7EC',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  modePillText: { fontSize: 11, fontWeight: '700', color: '#03543F' },
-  modeDesc: { fontSize: 12, color: '#64748B', lineHeight: 17 },
-  bulletText: { fontSize: 13, color: '#475569', lineHeight: 20, marginBottom: 6 },
-  footer: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-  },
-  startButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 14,
+  continueBtn: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    backgroundColor: '#0D9488',
+    borderRadius: 26,
+    paddingVertical: 14,
+    shadowColor: '#0D9488',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  startButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  continueBtnDisabled: {
+    backgroundColor: '#94D3CD',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  continueBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
 });

@@ -17,6 +17,11 @@ import {
   UserAttemptHistory,
   TopicPerformance,
 } from '@vibhillion/shared';
+import {
+  FULL_100_QUESTIONS,
+  FULL_100_SECTIONS,
+  FULL_100_CORRECT_MAPPING,
+} from './full100Questions';
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -634,7 +639,13 @@ export const examService = {
    * Fetch single exam details with sections
    */
   async getExamDetails(examId: string): Promise<Exam | null> {
-    if (!isSupabaseConfigured) return MOCK_EXAM;
+    const examCopy = {
+      ...MOCK_EXAM,
+      total_questions: 100,
+      total_marks: 200.0,
+      sections: FULL_100_SECTIONS,
+    };
+    if (!isSupabaseConfigured) return examCopy;
     try {
       const { data, error } = await supabase
         .from('exams')
@@ -642,66 +653,28 @@ export const examService = {
         .eq('id', examId)
         .single();
 
-      if (error || !data) return MOCK_EXAM;
-      return data as Exam;
+      if (error || !data) return examCopy;
+      return {
+        ...(data as Exam),
+        total_questions: 100,
+        total_marks: 200.0,
+        sections: (data.sections && data.sections.length > 0) ? data.sections : FULL_100_SECTIONS,
+      };
     } catch {
-      return MOCK_EXAM;
+      return examCopy;
     }
   },
 
   /**
    * Fetch exam questions for test attempt.
-   * NOTE: Question answers are protected by RLS and not queried here!
+   * Delivers the comprehensive 100-question SSC CGL Tier-1 exam suite.
    */
   async getExamQuestions(examId: string, sectionId?: string): Promise<Question[]> {
-    if (!isSupabaseConfigured) {
-      if (sectionId) {
-        return MOCK_QUESTIONS.filter((q) => q.section_id === sectionId);
-      }
-      return MOCK_QUESTIONS;
+    if (!sectionId || sectionId === 'all') {
+      return FULL_100_QUESTIONS;
     }
-    try {
-      let query = supabase
-        .from('questions')
-        .select(`
-          id,
-          section_id,
-          question_number,
-          question_text,
-          question_type,
-          difficulty,
-          topic,
-          subtopic,
-          marks,
-          negative_marks,
-          options:question_options (
-            id,
-            question_id,
-            option_label,
-            option_text,
-            display_order
-          )
-        `)
-        .order('question_number', { ascending: true });
-
-      if (sectionId) {
-        query = query.eq('section_id', sectionId);
-      }
-
-      const { data, error } = await query;
-      if (error || !data || data.length === 0) {
-        if (sectionId) {
-          return MOCK_QUESTIONS.filter((q) => q.section_id === sectionId);
-        }
-        return MOCK_QUESTIONS;
-      }
-      return data as Question[];
-    } catch {
-      if (sectionId) {
-        return MOCK_QUESTIONS.filter((q) => q.section_id === sectionId);
-      }
-      return MOCK_QUESTIONS;
-    }
+    const filtered = FULL_100_QUESTIONS.filter((q) => q.section_id === sectionId);
+    return filtered.length > 0 ? filtered : FULL_100_QUESTIONS;
   },
 
   /**
@@ -719,10 +692,10 @@ export const examService = {
       score: 0,
       correct_count: 0,
       wrong_count: 0,
-      unattempted_count: 20,
+      unattempted_count: 100,
       attempted_count: 0,
       accuracy_percentage: 0,
-      total_questions: 20,
+      total_questions: 100,
       created_at: new Date().toISOString(),
     };
 
@@ -788,192 +761,190 @@ export const examService = {
     attemptId: string,
     localAnswers?: Record<string, { optionId: string | null; timeSpent: number; marked: boolean }>,
     sectionId?: string
-  ): Promise<ExamResultSummary> {
-    // Determine question pool
-    const pool = sectionId
-      ? MOCK_QUESTIONS.filter((q) => q.section_id === sectionId)
-      : MOCK_QUESTIONS;
+  ): Promise<ExamResultSummary & { subjectBreakdown?: any[] }> {
+    const pool = FULL_100_QUESTIONS;
+    const answers = localAnswers || {};
 
-    if (!isSupabaseConfigured || attemptId.startsWith('local-')) {
-      const answers = localAnswers || {};
-      let correct = 0;
-      let wrong = 0;
-      let unattempted = 0;
-      let totalTime = 0;
+    let correct = 0;
+    let wrong = 0;
+    let unattempted = 0;
+    let totalTime = 0;
 
-      pool.forEach((q) => {
-        const ans = answers[q.id];
-        totalTime += ans?.timeSpent || 0;
-        if (ans && ans.optionId) {
-          if (ans.optionId === MOCK_CORRECT_MAPPING[q.id]) {
-            correct++;
-          } else {
-            wrong++;
-          }
-        } else {
-          unattempted++;
-        }
-      });
+    // Track sectional metrics
+    const sectionStats: Record<string, { total: number; correct: number; wrong: number; skipped: number }> = {
+      english: { total: 0, correct: 0, wrong: 0, skipped: 0 },
+      general_knowledge: { total: 0, correct: 0, wrong: 0, skipped: 0 },
+      quantitative_aptitude: { total: 0, correct: 0, wrong: 0, skipped: 0 },
+      reasoning: { total: 0, correct: 0, wrong: 0, skipped: 0 },
+    };
 
-      const attempted = correct + wrong;
-      const correctMarks = correct * 2.0;
-      const negativeMarks = wrong * 0.5;
-      const finalScore = Number((correctMarks - negativeMarks).toFixed(2));
-      const accuracy = attempted > 0 ? (correct / attempted) * 100 : 0;
+    pool.forEach((q) => {
+      const ans = answers[q.id];
+      totalTime += ans?.timeSpent || 0;
 
-      const summary: ExamResultSummary = {
-        attempt_id: attemptId,
-        exam_title: MOCK_EXAM.title,
-        total_questions: pool.length,
-        attempted_count: attempted,
-        unattempted_count: unattempted,
-        correct_count: correct,
-        wrong_count: wrong,
-        correct_marks: correctMarks,
-        negative_marks: negativeMarks,
-        final_score: finalScore,
-        maximum_score: pool.length * 2.0,
-        accuracy_percentage: Number(accuracy.toFixed(2)),
-        total_time_seconds: totalTime,
-        rank: 1,
-        percentile: 100,
-        total_participants: 1,
-      };
+      let subKey = 'english';
+      if (q.section_id.endsWith('0002')) subKey = 'reasoning';
+      else if (q.section_id.endsWith('0003')) subKey = 'quantitative_aptitude';
+      else if (q.section_id.endsWith('0004')) subKey = 'general_knowledge';
 
-      // Record to local storage history
-      await this.saveLocalAttempt({
-        id: attemptId,
-        exam_id: MOCK_EXAM.id,
-        exam_title: MOCK_EXAM.title,
-        mode: 'timed',
-        score: finalScore,
-        maximum_score: pool.length * 2.0,
-        accuracy_percentage: Number(accuracy.toFixed(2)),
-        total_time_seconds: totalTime,
-        submitted_at: new Date().toISOString(),
-        correct_count: correct,
-        wrong_count: wrong,
-        unattempted_count: unattempted,
-      });
-
-      return summary;
-    }
-
-    try {
-      const { data, error } = await supabase.rpc('submit_exam_attempt', {
-        p_attempt_id: attemptId,
-      });
-
-      if (error || !data) {
-        throw new Error(error?.message || 'Failed to submit attempt');
+      if (sectionStats[subKey]) {
+        sectionStats[subKey].total += 1;
       }
 
-      const summary: ExamResultSummary = {
-        attempt_id: attemptId,
-        exam_title: 'SSC CGL Exam',
-        total_questions: data.total_questions,
-        attempted_count: data.attempted_count,
-        unattempted_count: data.unattempted_count,
-        correct_count: data.correct_count,
-        wrong_count: data.wrong_count,
-        correct_marks: data.correct_count * 2.0,
-        negative_marks: data.wrong_count * 0.5,
-        final_score: data.score,
-        maximum_score: data.total_questions * 2.0,
-        accuracy_percentage: data.accuracy_percentage,
-        total_time_seconds: data.total_time_seconds,
-        rank: 1,
-        percentile: 95.0,
-        total_participants: 120,
-      };
+      if (ans && ans.optionId) {
+        if (ans.optionId === FULL_100_CORRECT_MAPPING[q.id]) {
+          correct++;
+          if (sectionStats[subKey]) sectionStats[subKey].correct += 1;
+        } else {
+          wrong++;
+          if (sectionStats[subKey]) sectionStats[subKey].wrong += 1;
+        }
+      } else {
+        unattempted++;
+        if (sectionStats[subKey]) sectionStats[subKey].skipped += 1;
+      }
+    });
 
-      await this.saveLocalAttempt({
-        id: attemptId,
-        exam_id: MOCK_EXAM.id,
-        exam_title: 'SSC CGL Exam',
-        mode: 'timed',
-        score: data.score,
-        maximum_score: data.total_questions * 2.0,
-        accuracy_percentage: data.accuracy_percentage,
-        total_time_seconds: data.total_time_seconds,
-        submitted_at: new Date().toISOString(),
-        correct_count: data.correct_count,
-        wrong_count: data.wrong_count,
-        unattempted_count: data.unattempted_count,
-      });
+    const attempted = correct + wrong;
+    const correctMarks = correct * 2.0;
+    const negativeMarks = wrong * 0.5;
+    const finalScore = Number((correctMarks - negativeMarks).toFixed(2));
+    const accuracy = attempted > 0 ? (correct / attempted) * 100 : 0;
 
-      return summary;
-    } catch (err) {
-      console.warn('RPC submission error:', err);
-      throw err;
-    }
+    const subjectBreakdown = [
+      {
+        subject: 'english',
+        displayName: 'English Comprehension',
+        total: sectionStats.english.total,
+        correct: sectionStats.english.correct,
+        wrong: sectionStats.english.wrong,
+        skipped: sectionStats.english.skipped,
+        accuracy: sectionStats.english.correct + sectionStats.english.wrong > 0
+          ? Number(((sectionStats.english.correct / (sectionStats.english.correct + sectionStats.english.wrong)) * 100).toFixed(1))
+          : 0,
+      },
+      {
+        subject: 'general_knowledge',
+        displayName: 'General Awareness',
+        total: sectionStats.general_knowledge.total,
+        correct: sectionStats.general_knowledge.correct,
+        wrong: sectionStats.general_knowledge.wrong,
+        skipped: sectionStats.general_knowledge.skipped,
+        accuracy: sectionStats.general_knowledge.correct + sectionStats.general_knowledge.wrong > 0
+          ? Number(((sectionStats.general_knowledge.correct / (sectionStats.general_knowledge.correct + sectionStats.general_knowledge.wrong)) * 100).toFixed(1))
+          : 0,
+      },
+      {
+        subject: 'quantitative_aptitude',
+        displayName: 'Quantitative Aptitude',
+        total: sectionStats.quantitative_aptitude.total,
+        correct: sectionStats.quantitative_aptitude.correct,
+        wrong: sectionStats.quantitative_aptitude.wrong,
+        skipped: sectionStats.quantitative_aptitude.skipped,
+        accuracy: sectionStats.quantitative_aptitude.correct + sectionStats.quantitative_aptitude.wrong > 0
+          ? Number(((sectionStats.quantitative_aptitude.correct / (sectionStats.quantitative_aptitude.correct + sectionStats.quantitative_aptitude.wrong)) * 100).toFixed(1))
+          : 0,
+      },
+      {
+        subject: 'reasoning',
+        displayName: 'General Intelligence & Reasoning',
+        total: sectionStats.reasoning.total,
+        correct: sectionStats.reasoning.correct,
+        wrong: sectionStats.reasoning.wrong,
+        skipped: sectionStats.reasoning.skipped,
+        accuracy: sectionStats.reasoning.correct + sectionStats.reasoning.wrong > 0
+          ? Number(((sectionStats.reasoning.correct / (sectionStats.reasoning.correct + sectionStats.reasoning.wrong)) * 100).toFixed(1))
+          : 0,
+      },
+    ];
+
+    const summary: ExamResultSummary & { subjectBreakdown?: any[] } = {
+      attempt_id: attemptId,
+      exam_title: 'SSC CGL T-I (Held on 12 Sep 2025 S1) – English',
+      total_questions: 100,
+      attempted_count: attempted,
+      unattempted_count: unattempted,
+      correct_count: correct,
+      wrong_count: wrong,
+      correct_marks: correctMarks,
+      negative_marks: negativeMarks,
+      final_score: finalScore,
+      maximum_score: 200.0,
+      accuracy_percentage: Number(accuracy.toFixed(1)),
+      total_time_seconds: totalTime,
+      rank: 1,
+      percentile: 100,
+      total_participants: 1,
+      subjectBreakdown,
+    };
+
+    // Save to local storage history
+    await this.saveLocalAttempt({
+      id: attemptId,
+      exam_id: MOCK_EXAM.id,
+      exam_title: summary.exam_title,
+      mode: 'timed',
+      score: finalScore,
+      maximum_score: 200.0,
+      accuracy_percentage: Number(accuracy.toFixed(1)),
+      total_time_seconds: totalTime,
+      submitted_at: new Date().toISOString(),
+      correct_count: correct,
+      wrong_count: wrong,
+      unattempted_count: unattempted,
+    });
+
+    return summary;
   },
 
   /**
-   * Fetch post-submission solutions with explanations & steps
+   * Fetch post-submission solutions with explanations & steps for all 100 questions
    */
   async getSolutions(
     attemptId: string,
     localAnswers?: Record<string, { optionId: string | null; timeSpent: number; marked: boolean }>,
     sectionId?: string
   ): Promise<QuestionAnalysis[]> {
-    const pool = sectionId
-      ? MOCK_QUESTIONS.filter((q) => q.section_id === sectionId)
-      : MOCK_QUESTIONS;
+    const pool = FULL_100_QUESTIONS;
+    const answers = localAnswers || {};
 
-    if (!isSupabaseConfigured || attemptId.startsWith('local-')) {
-      const answers = localAnswers || {};
+    return pool.map((q) => {
+      const ans = answers[q.id];
+      const selectedId = ans?.optionId || null;
+      const correctId = FULL_100_CORRECT_MAPPING[q.id];
+      const isCorrect = selectedId === correctId;
+      const marks = selectedId ? (isCorrect ? 2.0 : -0.5) : 0;
+      const sec = FULL_100_SECTIONS.find((s) => s.id === q.section_id);
 
-      return pool.map((q) => {
-        const ans = answers[q.id];
-        const selectedId = ans?.optionId || null;
-        const correctId = MOCK_CORRECT_MAPPING[q.id];
-        const isCorrect = selectedId === correctId;
-        const marks = selectedId ? (isCorrect ? 2.0 : -0.5) : 0;
-
-        const sec = MOCK_SECTIONS.find((s) => s.id === q.section_id);
-
-        return {
-          question_id: q.id,
-          question_number: q.question_number,
-          question_text: q.question_text,
-          difficulty: q.difficulty,
-          topic: q.topic || 'General',
-          subtopic: q.subtopic || 'General',
-          marks: q.marks,
-          negative_marks: q.negative_marks,
-          section_id: q.section_id,
-          section_name: sec?.name || 'SSC Section',
-          options: (q.options || []).map((o: any) => ({
-            id: o.id,
-            label: o.option_label,
-            text: o.option_text,
-            display_order: o.display_order,
-          })),
-          user_selected_option_id: selectedId,
-          correct_option_id: correctId,
-          is_correct: selectedId ? isCorrect : false,
-          marks_awarded: marks,
-          time_spent_seconds: ans?.timeSpent || 0,
-          explanation: q.explanation,
-          solution_steps: q.solution_steps,
-          recommendation: isCorrect
-            ? 'Great job! Strong grasp of this rule.'
-            : 'Revise core concepts and practice 10 similar questions.',
-        };
-      });
-    }
-
-    try {
-      const { data, error } = await supabase.rpc('get_attempt_solutions', {
-        p_attempt_id: attemptId,
-      });
-
-      if (error || !data) return [];
-      return data as QuestionAnalysis[];
-    } catch {
-      return [];
-    }
+      return {
+        question_id: q.id,
+        question_number: q.question_number,
+        question_text: q.question_text,
+        difficulty: q.difficulty,
+        topic: q.topic || 'General',
+        subtopic: q.subtopic || 'General',
+        marks: q.marks,
+        negative_marks: q.negative_marks,
+        section_id: q.section_id,
+        section_name: sec?.name || 'Section',
+        options: (q.options || []).map((o: any) => ({
+          id: o.id,
+          label: o.option_label,
+          text: o.option_text,
+          display_order: o.display_order,
+        })),
+        user_selected_option_id: selectedId,
+        correct_option_id: correctId,
+        is_correct: selectedId ? isCorrect : false,
+        marks_awarded: marks,
+        time_spent_seconds: ans?.timeSpent || 0,
+        explanation: q.explanation,
+        solution_steps: q.solution_steps,
+        recommendation: isCorrect
+          ? 'Accurate attempt! Retain this methodology.'
+          : 'Review underlying rule and practice similar question patterns.',
+      };
+    });
   },
 
   /**

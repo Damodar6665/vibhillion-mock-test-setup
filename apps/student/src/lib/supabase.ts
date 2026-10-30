@@ -14,14 +14,33 @@ export const isSupabaseConfigured =
   !supabaseAnonKey.includes('placeholder') &&
   !supabaseAnonKey.includes('your-anon-key');
 
+const serverSafeStorage = {
+  getItem: async (key: string) => {
+    if (typeof window !== 'undefined') {
+      return AsyncStorage.getItem(key);
+    }
+    return null;
+  },
+  setItem: async (key: string, value: string) => {
+    if (typeof window !== 'undefined') {
+      return AsyncStorage.setItem(key, value);
+    }
+  },
+  removeItem: async (key: string) => {
+    if (typeof window !== 'undefined') {
+      return AsyncStorage.removeItem(key);
+    }
+  },
+};
+
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder-project.supabase.co',
   supabaseAnonKey || 'placeholder-key',
   {
     auth: {
-      storage: AsyncStorage,
-      autoRefreshToken: true,
-      persistSession: true,
+      storage: serverSafeStorage,
+      autoRefreshToken: typeof window !== 'undefined',
+      persistSession: typeof window !== 'undefined',
       detectSessionInUrl: false,
     },
   }

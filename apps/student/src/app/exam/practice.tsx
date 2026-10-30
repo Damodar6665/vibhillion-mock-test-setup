@@ -1,5 +1,5 @@
 // ==============================================================================
-// SCREEN 7: PRACTICE MODE SESSION
+// VIBHILLION AI: PRACTICE EXAMINATION ENGINE (COUNT-UP TIMER, NO TIME LIMIT)
 // File: apps/student/src/app/exam/practice.tsx
 // ==============================================================================
 
@@ -12,6 +12,8 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Modal,
+  Platform,
+  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -20,90 +22,81 @@ import { Ionicons } from '@expo/vector-icons';
 import { examService } from '@/services/examService';
 import { formatDuration, Question } from '@vibhillion/shared';
 
-interface PracticeAnswerState {
+interface AnswerState {
   optionId: string | null;
   timeSpent: number;
-  revealed: boolean;
+  marked: boolean;
+  visited: boolean;
 }
+
+const SECTION_TABS = [
+  { id: 'english', name: 'English', start: 0, count: 25 },
+  { id: 'reasoning', name: 'Reasoning', start: 25, count: 25 },
+  { id: 'quant', name: 'Quant', start: 50, count: 25 },
+  { id: 'ga', name: 'General Awareness', start: 75, count: 25 },
+];
 
 export default function PracticeExamScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const examId = (params.examId as string) || 'e0000001-0000-0000-0000-000000000001';
-  const sectionId = (params.sectionId as string) || 'a0000001-0000-0000-0000-000000000001';
-  const sectionName = (params.sectionName as string) || 'English Comprehension';
+  const paperTitle =
+    (params.paperTitle as string) || 'SSC CGL T-I (Held on 12 Sep 2025 S1) – English';
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, PracticeAnswerState>>({});
+  const [answers, setAnswers] = useState<Record<string, AnswerState>>({});
   const [attemptId, setAttemptId] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
-  // Practice mode: Elapsed timer starts at 00:00 and increments forward
+  // Practice Mode: Starts from 00:00 and counts UP without time limit
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showPaletteModal, setShowPaletteModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const questionStartTimeRef = useRef<number>(Date.now());
-  const [showPalette, setShowPalette] = useState(false);
-  const [bookmarkedMap, setBookmarkedMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    async function initPractice() {
+    async function loadTest() {
       try {
         setLoading(true);
         const [qData, attempt] = await Promise.all([
-          examService.getExamQuestions(examId, sectionId),
+          examService.getExamQuestions(examId),
           examService.startAttempt(examId, 'practice'),
         ]);
 
         setQuestions(qData);
         setAttemptId(attempt.id);
 
-        const initialAnswers: Record<string, PracticeAnswerState> = {};
-        qData.forEach((q: Question) => {
-          initialAnswers[q.id] = { optionId: null, timeSpent: 0, revealed: false };
+        const initialAnswers: Record<string, AnswerState> = {};
+        qData.forEach((q: Question, idx: number) => {
+          initialAnswers[q.id] = {
+            optionId: null,
+            timeSpent: 0,
+            marked: false,
+            visited: idx === 0,
+          };
         });
         setAnswers(initialAnswers);
-
-        // Load existing bookmarks
-        examService.getBookmarks().then((bms) => {
-          const bmMap: Record<string, boolean> = {};
-          bms.forEach((b) => (bmMap[b.question_id] = true));
-          setBookmarkedMap(bmMap);
-        });
       } finally {
         setLoading(false);
         questionStartTimeRef.current = Date.now();
       }
     }
-    initPractice();
-  }, [examId, sectionId]);
+    loadTest();
+  }, [examId]);
 
-  const handleToggleBookmarkCurrent = async () => {
-    const currentQ = questions[currentIndex];
-    if (!currentQ) return;
-    const isNow = await examService.toggleBookmark({
-      id: currentQ.id,
-      question_text: currentQ.question_text,
-      topic: currentQ.topic,
-      subtopic: currentQ.subtopic,
-      difficulty: currentQ.difficulty,
-      section_name: sectionName,
-      options: currentQ.options,
-      explanation: currentQ.explanation,
-      solution_steps: currentQ.solution_steps,
-    });
-    setBookmarkedMap((prev) => ({ ...prev, [currentQ.id]: isNow }));
-  };
-
-  // Elapsed timer (No countdown, runs forward)
+  // Elapsed timer counting UP forward
   useEffect(() => {
-    if (loading) return;
-    const interval = setInterval(() => {
+    if (loading || isSubmitting) return;
+    const timer = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
-    return () => clearInterval(interval);
-  }, [loading]);
+    return () => clearInterval(timer);
+  }, [loading, isSubmitting]);
 
-  const recordQuestionTime = () => {
+  const recordTimeSpent = () => {
     const currentQ = questions[currentIndex];
     if (!currentQ) return;
     const elapsed = Math.round((Date.now() - questionStartTimeRef.current) / 1000);
@@ -121,16 +114,20 @@ export default function PracticeExamScreen() {
     const currentQ = questions[currentIndex];
     if (!currentQ) return;
 
-    setAnswers((prev) => ({
-      ...prev,
-      [currentQ.id]: {
-        ...prev[currentQ.id],
-        optionId: prev[currentQ.id]?.optionId === optionId ? null : optionId,
-      },
-    }));
+    setAnswers((prev) => {
+      const isSelected = prev[currentQ.id]?.optionId === optionId;
+      return {
+        ...prev,
+        [currentQ.id]: {
+          ...prev[currentQ.id],
+          optionId: isSelected ? null : optionId,
+          visited: true,
+        },
+      };
+    });
   };
 
-  const handleToggleReveal = () => {
+  const handleToggleMark = () => {
     const currentQ = questions[currentIndex];
     if (!currentQ) return;
 
@@ -138,306 +135,351 @@ export default function PracticeExamScreen() {
       ...prev,
       [currentQ.id]: {
         ...prev[currentQ.id],
-        revealed: !prev[currentQ.id]?.revealed,
+        marked: !prev[currentQ.id]?.marked,
+        visited: true,
       },
     }));
   };
 
-  const handleNavigateQuestion = (nextIndex: number) => {
-    if (nextIndex < 0 || nextIndex >= questions.length) return;
-    recordQuestionTime();
-    setCurrentIndex(nextIndex);
+  const handleClear = () => {
+    const currentQ = questions[currentIndex];
+    if (!currentQ) return;
+
+    setAnswers((prev) => ({
+      ...prev,
+      [currentQ.id]: {
+        ...prev[currentQ.id],
+        optionId: null,
+      },
+    }));
   };
 
-  const handleFinishPractice = async () => {
-    recordQuestionTime();
-    try {
-      // Map practice answers to format expected by submitAttempt
-      const mapped: Record<string, { optionId: string | null; timeSpent: number; marked: boolean }> = {};
-      Object.entries(answers).forEach(([k, v]) => {
-        mapped[k] = { optionId: v.optionId, timeSpent: v.timeSpent, marked: false };
-      });
+  const handleNavigate = (targetIdx: number) => {
+    if (targetIdx < 0 || targetIdx >= questions.length) return;
+    recordTimeSpent();
 
-      const summary = await examService.submitAttempt(attemptId, mapped);
+    const targetQ = questions[targetIdx];
+    setAnswers((prev) => ({
+      ...prev,
+      [targetQ.id]: {
+        ...prev[targetQ.id],
+        visited: true,
+      },
+    }));
+
+    setCurrentIndex(targetIdx);
+  };
+
+  const handleFinalSubmit = async () => {
+    recordTimeSpent();
+    try {
+      setIsSubmitting(true);
+      setShowSubmitModal(false);
+
+      const summary = await examService.submitAttempt(attemptId, answers);
 
       router.replace({
         pathname: '/exam/result',
         params: {
-          attemptId,
-          examTitle: summary.exam_title,
-          totalQuestions: summary.total_questions,
-          attemptedCount: summary.attempted_count,
-          unattemptedCount: summary.unattempted_count,
-          correctCount: summary.correct_count,
-          wrongCount: summary.wrong_count,
-          finalScore: summary.final_score,
-          maximumScore: summary.maximum_score,
-          accuracyPercentage: summary.accuracy_percentage,
-          totalTimeSeconds: elapsedSeconds,
-          rank: 1,
-          percentile: 100,
-          answersJson: JSON.stringify(mapped),
+          attemptId: summary.attempt_id,
+          paperTitle,
+          totalQuestions: String(summary.total_questions),
+          attemptedCount: String(summary.attempted_count),
+          unattemptedCount: String(summary.unattempted_count),
+          correctCount: String(summary.correct_count),
+          wrongCount: String(summary.wrong_count),
+          finalScore: String(summary.final_score),
+          maximumScore: String(summary.maximum_score),
+          accuracyPercentage: String(summary.accuracy_percentage),
+          totalTimeSeconds: String(elapsedSeconds),
+          answersJson: JSON.stringify(answers),
         },
       });
-    } catch (err: any) {
-      console.warn('Finish practice error:', err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   if (loading || questions.length === 0) {
     return (
-      <SafeAreaView style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={styles.loadingText}>Loading practice mode...</Text>
+      <SafeAreaView style={styles.loadingCenter}>
+        <ActivityIndicator size="large" color="#0D9488" />
+        <Text style={styles.loadingText}>Loading Practice Session...</Text>
       </SafeAreaView>
     );
   }
 
   const currentQ = questions[currentIndex];
-  const currentAnswer = answers[currentQ.id];
+  const currentAnswer = answers[currentQ?.id] || { optionId: null, timeSpent: 0, marked: false, visited: true };
 
-  // Map known correct answers for practice reveal mode
-  const correctOptionIds: Record<string, string> = {
-    'b0000001-0000-0000-0000-000000000001': 'o2',
-    'b0000001-0000-0000-0000-000000000002': 'o5',
-    'b0000001-0000-0000-0000-000000000003': 'o11',
-    'b0000001-0000-0000-0000-000000000004': 'o14',
-    'b0000001-0000-0000-0000-000000000005': 'o17',
-  };
-  const correctOptionId = correctOptionIds[currentQ.id];
+  let answeredCount = 0;
+  let markedCount = 0;
+  let unansweredCount = 0;
+
+  questions.forEach((q) => {
+    const a = answers[q.id];
+    if (a?.optionId) answeredCount++;
+    else unansweredCount++;
+    if (a?.marked) markedCount++;
+  });
+
+  const activeSectionTab =
+    currentIndex < 25
+      ? 0
+      : currentIndex < 50
+      ? 1
+      : currentIndex < 75
+      ? 2
+      : 3;
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
-      {/* Top Bar with Elapsed Time */}
+      {/* TOP BAR */}
       <View style={styles.topBar}>
-        <View>
-          <Text style={styles.topSectionName}>{sectionName}</Text>
-          <View style={styles.practiceBadge}>
-            <Text style={styles.practiceBadgeText}>PRACTICE MODE</Text>
-          </View>
-        </View>
+        <TouchableOpacity onPress={() => router.back()} style={styles.quitBtn}>
+          <Text style={styles.quitText}>Exit</Text>
+        </TouchableOpacity>
 
-        <View style={styles.timerBadge}>
-          <Ionicons name="stopwatch-outline" size={16} color="#059669" />
-          <Text style={styles.timerText}>
-            Elapsed: {formatDuration(elapsedSeconds)}
+        <View style={styles.timerCenter}>
+          <Text style={styles.timerText}>{formatDuration(elapsedSeconds)}</Text>
+          <Text style={styles.questionIndexText}>
+            Practice Q {currentIndex + 1}/{questions.length}
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.paletteTrigger}
-          onPress={() => setShowPalette(true)}
-        >
-          <Ionicons name="grid" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Sub Header */}
-      <View style={styles.subHeader}>
-        <Text style={styles.qIndexText}>
-          Question {currentIndex + 1} of {questions.length}
-        </Text>
-        <TouchableOpacity
-          style={[styles.revealBtn, currentAnswer?.revealed && styles.revealBtnActive]}
-          onPress={handleToggleReveal}
-        >
+        <TouchableOpacity onPress={handleToggleMark} style={styles.markBtn}>
           <Ionicons
-            name={currentAnswer?.revealed ? 'bulb' : 'bulb-outline'}
-            size={16}
-            color={currentAnswer?.revealed ? '#D97706' : '#2563EB'}
+            name={currentAnswer.marked ? 'flag' : 'flag-outline'}
+            size={18}
+            color={currentAnswer.marked ? '#A855F7' : '#64748B'}
+            style={{ marginRight: 4 }}
           />
-          <Text
-            style={[
-              styles.revealBtnText,
-              currentAnswer?.revealed && styles.revealBtnTextActive,
-            ]}
-          >
-            {currentAnswer?.revealed ? 'Hide Solution' : 'Reveal Solution'}
+          <Text style={[styles.markText, currentAnswer.marked && { color: '#A855F7' }]}>
+            Mark
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Main Question Body */}
-      <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.questionCard}>
-          <View style={styles.qMetaRow}>
-            <View style={styles.diffBadge}>
-              <Text style={styles.diffText}>{currentQ.difficulty.toUpperCase()}</Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={styles.topicText}>{currentQ.topic} • {currentQ.subtopic}</Text>
-              <TouchableOpacity onPress={handleToggleBookmarkCurrent} style={{ padding: 4 }}>
-                <Ionicons
-                  name={bookmarkedMap[currentQ.id] ? 'bookmark' : 'bookmark-outline'}
-                  size={18}
-                  color={bookmarkedMap[currentQ.id] ? '#2563EB' : '#94A3B8'}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
+      {/* SUB-HEADER / PROGRESS BAR */}
+      <View style={styles.subHeader}>
+        <Text style={styles.subHeaderText}>
+          {answeredCount}/{questions.length} answered • Practice Mode (Untimed)
+        </Text>
+        <View style={styles.progressBarTrack}>
+          <View
+            style={[
+              styles.progressBarFill,
+              { width: `${(answeredCount / questions.length) * 100}%` },
+            ]}
+          />
+        </View>
+      </View>
 
-          <Text style={styles.questionText}>{currentQ.question_text}</Text>
+      {/* 4 SECTION TABS */}
+      <View style={styles.sectionTabsRow}>
+        {SECTION_TABS.map((tab, idx) => (
+          <TouchableOpacity
+            key={tab.id}
+            style={[
+              styles.sectionTabBtn,
+              activeSectionTab === idx && styles.sectionTabBtnActive,
+            ]}
+            onPress={() => handleNavigate(tab.start)}
+          >
+            <Text
+              style={[
+                styles.sectionTabText,
+                activeSectionTab === idx && styles.sectionTabTextActive,
+              ]}
+              numberOfLines={1}
+            >
+              {tab.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* MAIN QUESTION SCROLLABLE AREA */}
+      <ScrollView
+        style={styles.mainContainer}
+        contentContainerStyle={styles.mainScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.sectionBadgePill}>
+          <Text style={styles.sectionBadgeText}>{currentQ.topic || 'Reasoning'}</Text>
         </View>
 
-        {/* Options */}
+        <Text style={styles.questionText}>{currentQ.question_text}</Text>
+
         <View style={styles.optionsList}>
           {currentQ.options?.map((opt) => {
-            const isSelected = currentAnswer?.optionId === opt.id;
-            const isCorrect = opt.id === correctOptionId;
-            const showCorrect = currentAnswer?.revealed && isCorrect;
-            const showWrong = currentAnswer?.revealed && isSelected && !isCorrect;
-
-            let cardBorder = '#E2E8F0';
-            let cardBg = '#FFFFFF';
-            if (showCorrect) {
-              cardBorder = '#10B981';
-              cardBg = '#DEF7EC';
-            } else if (showWrong) {
-              cardBorder = '#EF4444';
-              cardBg = '#FDE8E8';
-            } else if (isSelected) {
-              cardBorder = '#2563EB';
-              cardBg = '#EFF6FF';
-            }
-
+            const isSelected = currentAnswer.optionId === opt.id;
             return (
               <TouchableOpacity
                 key={opt.id}
-                style={[styles.optionCard, { borderColor: cardBorder, backgroundColor: cardBg }]}
+                style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                activeOpacity={0.8}
                 onPress={() => handleSelectOption(opt.id)}
-                activeOpacity={0.7}
               >
-                <View
-                  style={[
-                    styles.optionLabelCircle,
-                    isSelected && { backgroundColor: '#2563EB' },
-                    showCorrect && { backgroundColor: '#10B981' },
-                    showWrong && { backgroundColor: '#EF4444' },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.optionLabelText,
-                      (isSelected || showCorrect || showWrong) && { color: '#FFFFFF' },
-                    ]}
-                  >
+                <View style={[styles.optionCircle, isSelected && styles.optionCircleSelected]}>
+                  <Text style={[styles.optionLetter, isSelected && styles.optionLetterSelected]}>
                     {opt.option_label}
                   </Text>
                 </View>
-                <Text style={styles.optionText}>{opt.option_text}</Text>
+                <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                  {opt.option_text}
+                </Text>
               </TouchableOpacity>
             );
           })}
         </View>
-
-        {/* Detailed Explanation if Revealed */}
-        {currentAnswer?.revealed && (
-          <View style={styles.explanationCard}>
-            <View style={styles.explanationHeader}>
-              <Ionicons name="information-circle" size={20} color="#2563EB" />
-              <Text style={styles.explanationTitle}>Explanation & Solution</Text>
-            </View>
-            <Text style={styles.explanationBody}>{currentQ.explanation}</Text>
-
-            {currentQ.solution_steps && currentQ.solution_steps.length > 0 && (
-              <View style={styles.stepsContainer}>
-                <Text style={styles.stepsTitle}>Step-by-Step Breakdown:</Text>
-                {currentQ.solution_steps.map((step, idx) => (
-                  <Text key={idx} style={styles.stepItem}>
-                    {idx + 1}. {step}
-                  </Text>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
       </ScrollView>
 
-      {/* Footer Navigation */}
-      <View style={styles.footer}>
+      {/* BOTTOM ACTION BAR */}
+      <View style={styles.bottomBar}>
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, currentIndex === 0 && { opacity: 0.3 }]}
+            onPress={() => handleNavigate(currentIndex - 1)}
+            disabled={currentIndex === 0}
+          >
+            <Ionicons name="chevron-back" size={16} color="#64748B" />
+            <Text style={styles.actionBtnText}>Prev</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionBtn} onPress={handleClear}>
+            <Ionicons name="trash-outline" size={16} color="#64748B" />
+            <Text style={styles.actionBtnText}>Clear</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => setShowPaletteModal(true)}
+          >
+            <Ionicons name="grid-outline" size={20} color="#0F172A" />
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
-          style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-          onPress={() => handleNavigateQuestion(currentIndex - 1)}
-          disabled={currentIndex === 0}
+          style={styles.primaryNextBtn}
+          activeOpacity={0.85}
+          onPress={() => {
+            if (currentIndex === questions.length - 1) {
+              setShowSubmitModal(true);
+            } else {
+              handleNavigate(currentIndex + 1);
+            }
+          }}
         >
-          <Ionicons name="chevron-back" size={18} color={currentIndex === 0 ? '#94A3B8' : '#334155'} />
-          <Text style={[styles.navBtnText, currentIndex === 0 && styles.navBtnTextDisabled]}>
-            Previous
+          <Text style={styles.primaryNextBtnText}>
+            {currentIndex === questions.length - 1 ? 'Finish Practice' : 'Next >'}
           </Text>
         </TouchableOpacity>
-
-        <TouchableOpacity style={styles.finishBtn} onPress={handleFinishPractice}>
-          <Text style={styles.finishBtnText}>Finish Practice</Text>
-        </TouchableOpacity>
-
-        {currentIndex === questions.length - 1 ? (
-          <TouchableOpacity
-            style={[styles.navBtn, styles.nextBtn]}
-            onPress={handleFinishPractice}
-          >
-            <Text style={styles.nextBtnText}>Done</Text>
-            <Ionicons name="checkmark-done" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.navBtn, styles.nextBtn]}
-            onPress={() => handleNavigateQuestion(currentIndex + 1)}
-          >
-            <Text style={styles.nextBtnText}>Next</Text>
-            <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        )}
       </View>
 
-      {/* Question Palette Modal */}
-      <Modal visible={showPalette} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.paletteContainer}>
-            <View style={styles.paletteHeader}>
-              <Text style={styles.paletteTitle}>Practice Questions</Text>
-              <TouchableOpacity onPress={() => setShowPalette(false)}>
-                <Ionicons name="close" size={24} color="#0F172A" />
+      {/* SUBMIT MODAL */}
+      <Modal
+        visible={showSubmitModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSubmitModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.submitModalCard}>
+            <Text style={styles.submitModalTitle}>Finish Practice Session?</Text>
+
+            <View style={styles.submitTable}>
+              <View style={styles.submitTableRow}>
+                <Text style={styles.submitTableLabel}>Total Questions</Text>
+                <Text style={styles.submitTableVal}>{questions.length}</Text>
+              </View>
+              <View style={styles.submitTableDivider} />
+
+              <View style={styles.submitTableRow}>
+                <Text style={styles.submitTableLabel}>Answered</Text>
+                <Text style={[styles.submitTableVal, { color: '#0D9488' }]}>{answeredCount}</Text>
+              </View>
+              <View style={styles.submitTableDivider} />
+
+              <View style={styles.submitTableRow}>
+                <Text style={styles.submitTableLabel}>Unanswered</Text>
+                <Text style={[styles.submitTableVal, { color: '#64748B' }]}>{unansweredCount}</Text>
+              </View>
+            </View>
+
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={styles.continueTestBtn}
+                onPress={() => setShowSubmitModal(false)}
+              >
+                <Text style={styles.continueTestBtnText}>Keep Practicing</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.finalSubmitBtn}
+                onPress={handleFinalSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.finalSubmitBtnText}>View Results</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PALETTE MODAL */}
+      <Modal
+        visible={showPaletteModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPaletteModal(false)}
+      >
+        <View style={styles.paletteModalBackdrop}>
+          <View style={styles.paletteModalCard}>
+            <View style={styles.paletteModalHeader}>
+              <Text style={styles.paletteModalTitle}>Question Palette (100 Qs)</Text>
+              <TouchableOpacity onPress={() => setShowPaletteModal(false)}>
+                <Ionicons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.gridContainer}>
-              {questions.map((q, idx) => {
-                const ans = answers[q.id];
-                const isSelected = Boolean(ans?.optionId);
-                return (
-                  <TouchableOpacity
-                    key={q.id}
-                    style={[
-                      styles.paletteButton,
-                      isSelected && { backgroundColor: '#2563EB' },
-                      idx === currentIndex && { borderWidth: 2, borderColor: '#0F172A' },
-                    ]}
-                    onPress={() => {
-                      handleNavigateQuestion(idx);
-                      setShowPalette(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.paletteButtonText,
-                        isSelected && { color: '#FFFFFF' },
-                      ]}
-                    >
-                      {idx + 1}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            <ScrollView style={{ maxHeight: 380 }}>
+              <View style={styles.paletteGrid}>
+                {questions.map((q, qIdx) => {
+                  const a = answers[q.id];
+                  const isCur = qIdx === currentIndex;
+                  const isAns = Boolean(a?.optionId);
 
-            <TouchableOpacity
-              style={styles.closePaletteBtn}
-              onPress={() => setShowPalette(false)}
-            >
-              <Text style={styles.closePaletteBtnText}>Return to Practice</Text>
-            </TouchableOpacity>
+                  return (
+                    <TouchableOpacity
+                      key={q.id}
+                      style={[
+                        styles.paletteCell,
+                        {
+                          backgroundColor: isAns ? '#22C55E' : '#FFFFFF',
+                          borderColor: isAns ? '#22C55E' : '#CBD5E1',
+                        },
+                        isCur && { borderWidth: 2.5, borderColor: '#0F172A' },
+                      ]}
+                      onPress={() => {
+                        setShowPaletteModal(false);
+                        handleNavigate(qIdx);
+                      }}
+                    >
+                      <Text style={[styles.paletteCellText, { color: isAns ? '#FFFFFF' : '#475569' }]}>
+                        {qIdx + 1}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -446,183 +488,156 @@ export default function PracticeExamScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1E3A8A' },
+  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
+  loadingCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' },
+  loadingText: { fontSize: 14, color: '#64748B', marginTop: 12 },
   topBar: {
-    backgroundColor: '#1E3A8A',
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: Platform.OS === 'android' ? 36 : 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  topSectionName: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-  practiceBadge: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    marginTop: 2,
-  },
-  practiceBadgeText: { fontSize: 9, fontWeight: '800', color: '#92400E' },
-  timerBadge: {
-    backgroundColor: '#DEF7EC',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    gap: 4,
-  },
-  timerText: { fontSize: 13, fontWeight: '700', color: '#03543F' },
-  paletteTrigger: { padding: 6 },
+  quitBtn: { paddingVertical: 4, paddingHorizontal: 8 },
+  quitText: { fontSize: 15, fontWeight: '700', color: '#64748B' },
+  timerCenter: { alignItems: 'center' },
+  timerText: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  questionIndexText: { fontSize: 12, color: '#64748B', marginTop: 2, fontWeight: '500' },
+  markBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 },
+  markText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
   subHeader: {
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    backgroundColor: '#F8FAFC',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
-  qIndexText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  revealBtn: {
+  subHeaderText: { fontSize: 11, color: '#64748B', fontWeight: '500', marginBottom: 6 },
+  progressBarTrack: { height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, overflow: 'hidden' },
+  progressBarFill: { height: 4, backgroundColor: '#0D9488', borderRadius: 2 },
+  sectionTabsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    gap: 6,
+  },
+  sectionTabBtn: {
+    flex: 1,
     paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#EFF6FF',
-    gap: 4,
-  },
-  revealBtnActive: { backgroundColor: '#FEF3C7' },
-  revealBtnText: { fontSize: 12, color: '#2563EB', fontWeight: '700' },
-  revealBtnTextActive: { color: '#92400E' },
-  scrollArea: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContent: { padding: 16 },
-  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  loadingText: { marginTop: 12, fontSize: 14, color: '#64748B' },
-  questionCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 16,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
   },
-  qMetaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  diffBadge: {
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  sectionTabBtnActive: { backgroundColor: '#CCFBF1' },
+  sectionTabText: { fontSize: 11, fontWeight: '600', color: '#64748B' },
+  sectionTabTextActive: { color: '#0D9488', fontWeight: '700' },
+  mainContainer: { flex: 1, backgroundColor: '#FFFFFF' },
+  mainScrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 },
+  sectionBadgePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#CCFBF1',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 12,
   },
-  diffText: { fontSize: 10, fontWeight: '700', color: '#2563EB' },
-  topicText: { fontSize: 12, color: '#64748B', fontWeight: '500' },
-  questionText: { fontSize: 16, color: '#0F172A', lineHeight: 24, fontWeight: '500' },
-  optionsList: { gap: 10, marginBottom: 16 },
+  sectionBadgeText: { fontSize: 12, fontWeight: '700', color: '#0D9488' },
+  questionText: { fontSize: 16, fontWeight: '700', color: '#0F172A', lineHeight: 24, marginBottom: 20 },
+  optionsList: { gap: 12 },
   optionCard: {
-    borderRadius: 12,
-    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 14,
   },
-  optionLabelCircle: {
+  optionCardSelected: { borderColor: '#0D9488', backgroundColor: '#F0FDFA' },
+  optionCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
     backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
-  optionLabelText: { fontSize: 14, fontWeight: '700', color: '#334155' },
+  optionCircleSelected: { backgroundColor: '#0D9488' },
+  optionLetter: { fontSize: 13, fontWeight: '700', color: '#475569' },
+  optionLetterSelected: { color: '#FFFFFF' },
   optionText: { fontSize: 14, color: '#334155', flex: 1, lineHeight: 20 },
-  explanationCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1.5,
-    borderColor: '#93C5FD',
-    marginTop: 6,
-    marginBottom: 20,
-  },
-  explanationHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  explanationTitle: { fontSize: 14, fontWeight: '700', color: '#1E3A8A' },
-  explanationBody: { fontSize: 13, color: '#334155', lineHeight: 20 },
-  stepsContainer: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 10 },
-  stepsTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 6 },
-  stepItem: { fontSize: 12, color: '#475569', lineHeight: 18, marginBottom: 4 },
-  footer: {
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
+  optionTextSelected: { color: '#0F172A', fontWeight: '600' },
+  bottomBar: {
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
-  },
-  navBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    gap: 4,
-  },
-  navBtnDisabled: { borderColor: '#E2E8F0', opacity: 0.5 },
-  navBtnText: { fontSize: 13, fontWeight: '600', color: '#334155' },
-  navBtnTextDisabled: { color: '#94A3B8' },
-  finishBtn: {
-    backgroundColor: '#059669',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  finishBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  nextBtn: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
-  nextBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  paletteContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    width: '100%',
-    maxHeight: '80%',
-    padding: 18,
   },
-  paletteHeader: {
+  actionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  paletteTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingVertical: 10 },
-  paletteButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10 },
+  actionBtnText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  primaryNextBtn: {
+    backgroundColor: '#0D9488',
+    borderRadius: 24,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  primaryNextBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
   },
-  paletteButtonText: { fontSize: 14, fontWeight: '700', color: '#334155' },
-  closePaletteBtn: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
+  submitModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+  },
+  submitModalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
+  submitTable: { marginBottom: 20 },
+  submitTableRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
+  submitTableLabel: { fontSize: 13, color: '#64748B' },
+  submitTableVal: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  submitTableDivider: { height: 1, backgroundColor: '#F1F5F9' },
+  modalButtonsRow: { flexDirection: 'row', gap: 12 },
+  continueTestBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 14,
     paddingVertical: 12,
     alignItems: 'center',
-    marginTop: 14,
   },
-  closePaletteBtnText: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  continueTestBtnText: { fontSize: 13, fontWeight: '600', color: '#475569' },
+  finalSubmitBtn: {
+    flex: 1,
+    backgroundColor: '#0D9488',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  finalSubmitBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+  paletteModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  paletteModalCard: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
+  paletteModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  paletteModalTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  paletteGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4 },
+  paletteCell: { width: 32, height: 32, borderRadius: 8, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  paletteCellText: { fontSize: 11, fontWeight: '700' },
 });

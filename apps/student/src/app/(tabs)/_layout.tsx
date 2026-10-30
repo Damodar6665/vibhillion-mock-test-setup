@@ -1,5 +1,5 @@
 // ==============================================================================
-// VIBHILLION AI: 5-BUTTON BOTTOM NAVIGATION LAYOUT
+// VIBHILLION AI: 5-BUTTON BOTTOM NAVIGATION LAYOUT (MATCHING MOCK TESTS DESIGN)
 // File: apps/student/src/app/(tabs)/_layout.tsx
 // ==============================================================================
 
@@ -13,7 +13,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#2563EB',
+        tabBarActiveTintColor: '#0D9488', // Teal accent matching screenshots
         tabBarInactiveTintColor: '#64748B',
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
@@ -25,7 +25,7 @@ export default function TabLayout() {
           elevation: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '600',
           marginTop: -2,
         },
@@ -36,44 +36,68 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: (props: any) => (
-            <Ionicons name={props.focused ? 'home' : 'home-outline'} size={24} color={props.color} />
+            <Ionicons name={props.focused ? 'home' : 'home-outline'} size={23} color={props.color} />
           ),
         }}
       />
+
       <Tabs.Screen
         name="tests"
         options={{
           title: 'Tests',
           tabBarIcon: (props: any) => (
-            <Ionicons name={props.focused ? 'document-text' : 'document-text-outline'} size={24} color={props.color} />
+            <Ionicons name={props.focused ? 'document-text' : 'document-text-outline'} size={23} color={props.color} />
           ),
         }}
       />
+
+      <Tabs.Screen
+        name="aichat"
+        options={{
+          title: 'AI Chat',
+          tabBarIcon: (props: any) => (
+            <Ionicons name={props.focused ? 'sparkles' : 'sparkles-outline'} size={23} color={props.color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="materials"
+        options={{
+          title: 'Materials',
+          tabBarIcon: (props: any) => (
+            <Ionicons name={props.focused ? 'book' : 'book-outline'} size={23} color={props.color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="news"
+        options={{
+          title: 'News',
+          tabBarIcon: (props: any) => (
+            <Ionicons name={props.focused ? 'newspaper' : 'newspaper-outline'} size={23} color={props.color} />
+          ),
+        }}
+      />
+
+      {/* Internal sub-screens hidden from tab bar */}
       <Tabs.Screen
         name="bookmarks"
         options={{
-          title: 'Bookmarks',
-          tabBarIcon: (props: any) => (
-            <Ionicons name={props.focused ? 'bookmark' : 'bookmark-outline'} size={24} color={props.color} />
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
         name="analysis"
         options={{
-          title: 'Analysis',
-          tabBarIcon: (props: any) => (
-            <Ionicons name={props.focused ? 'bar-chart' : 'bar-chart-outline'} size={24} color={props.color} />
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: (props: any) => (
-            <Ionicons name={props.focused ? 'person' : 'person-outline'} size={24} color={props.color} />
-          ),
+          href: null,
         }}
       />
     </Tabs>

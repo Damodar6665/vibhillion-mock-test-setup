@@ -1,9 +1,9 @@
 // ==============================================================================
-// SCREENS 2, 3, 4: TESTS PORTAL (CATEGORIES -> SUB-CATEGORY -> PAPERS)
+// VIBHILLION AI: MOCK TESTS EXPLORER (MATCHING SCREENSHOTS 1, 2, 3)
 // File: apps/student/src/app/(tabs)/tests.tsx
 // ==============================================================================
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,276 +11,386 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
-  ActivityIndicator,
+  TextInput,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { examService } from '@/services/examService';
-import { Category, Exam, ExamSection } from '@vibhillion/shared';
 
-type Step = 'categories' | 'subcategories' | 'papers';
+type SubView = 'categories' | 'subexams' | 'papers';
+
+// Official Emblem Badges matching Screenshot 1 & 2
+const CategoryEmblem: React.FC<{ type: 'upsc' | 'ssc' | 'appsc' | 'rrb' }> = ({ type }) => {
+  if (type === 'upsc') {
+    return (
+      <View style={[styles.emblemBase, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}>
+        <Ionicons name="ribbon" size={26} color="#B45309" />
+        <Text style={{ fontSize: 7, fontWeight: '800', color: '#B45309', marginTop: -2 }}>UPSC</Text>
+      </View>
+    );
+  }
+  if (type === 'ssc') {
+    return (
+      <View style={[styles.emblemBase, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+        <Ionicons name="shield-checkmark" size={26} color="#DC2626" />
+        <Text style={{ fontSize: 7, fontWeight: '900', color: '#DC2626', marginTop: -2 }}>SSC</Text>
+      </View>
+    );
+  }
+  if (type === 'appsc') {
+    return (
+      <View style={[styles.emblemBase, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+        <Ionicons name="leaf" size={26} color="#15803D" />
+        <Text style={{ fontSize: 7, fontWeight: '800', color: '#15803D', marginTop: -2 }}>APPSC</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.emblemBase, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
+      <Ionicons name="train" size={26} color="#B91C1C" />
+      <Text style={{ fontSize: 7, fontWeight: '800', color: '#B91C1C', marginTop: -2 }}>RRB</Text>
+    </View>
+  );
+};
 
 export default function TestsScreen() {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState<Step>('categories');
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [exams, setExams] = useState<Exam[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [subView, setSubView] = useState<SubView>('categories');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  const loadCategories = async () => {
-    try {
-      setLoading(true);
-      const data = await examService.getCategories();
-      // Initially show only SSC category as specified
-      const sscOnly = data.filter(c => c.slug === 'ssc' || c.name.toUpperCase().includes('SSC'));
-      setCategories(sscOnly.length > 0 ? sscOnly : data);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSelectCategory = async (cat: Category) => {
-    setSelectedCategory(cat);
-    setCurrentStep('subcategories');
-  };
-
-  const handleSelectSubCategory = async () => {
-    if (!selectedCategory) return;
-    try {
-      setLoading(true);
-      const examData = await examService.getExamsByCategory(selectedCategory.id);
-      setExams(examData);
-      setCurrentStep('papers');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSelectExam = (exam: Exam, section?: ExamSection) => {
-    // Navigate to Screen 5: Test Instructions
+  // Handle Paper Selection -> Navigate to Instructions screen
+  const handleSelectPaper = (paperTitle: string) => {
     router.push({
       pathname: '/exam/instructions',
       params: {
-        examId: exam.id,
-        sectionId: section ? section.id : (exam.sections && exam.sections[0]?.id) || 'a0000001-0000-0000-0000-000000000001',
-        sectionName: section ? section.name : 'English Comprehension',
+        examId: 'e0000001-0000-0000-0000-000000000001',
+        sectionId: 'a0000001-0000-0000-0000-000000000001',
+        paperTitle,
       },
     });
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
-      {/* Screen Header & Breadcrumb */}
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          {currentStep !== 'categories' && (
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* TOP BAR / TITLE */}
+        <View style={styles.topHeader}>
+          <Text style={styles.screenTitle}>Mock Tests</Text>
+          <Text style={styles.screenSubtitle}>Practice with full-length exam simulations</Text>
+        </View>
+
+        {/* SEARCH BAR */}
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={20} color="#94A3B8" style={{ marginRight: 8 }} />
+          <TextInput
+            placeholder="Search exams..."
+            placeholderTextColor="#94A3B8"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={styles.searchInput}
+          />
+        </View>
+
+        {/* COMPETITIVE EXAMS HEADER */}
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderLeft}>
+            <Ionicons name="book-outline" size={18} color="#0D9488" style={{ marginRight: 6 }} />
+            <Text style={styles.sectionTitle}>Competitive Exams</Text>
+          </View>
+          <Text style={styles.sectionBadgeText}>4 Categories  |  89+ Topics</Text>
+        </View>
+
+        {/* RECENT TESTS HORIZONTAL LIST */}
+        <View style={styles.recentSection}>
+          <View style={styles.recentHeaderRow}>
+            <Ionicons name="trophy-outline" size={17} color="#EA580C" style={{ marginRight: 6 }} />
+            <Text style={styles.recentTitle}>Recent Tests</Text>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.recentScrollContent}
+          >
+            {/* Card 1 */}
             <TouchableOpacity
-              onPress={() => {
-                if (currentStep === 'papers') setCurrentStep('subcategories');
-                else if (currentStep === 'subcategories') setCurrentStep('categories');
-              }}
-              style={styles.backButton}
+              style={styles.recentCard}
+              activeOpacity={0.8}
+              onPress={() => handleSelectPaper('SSC CGL T-I (Held on 12 Sep 2025 S1) – English')}
             >
-              <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+              <Text style={styles.recentCardTitle} numberOfLines={1}>SSC CGL T-I (H...</Text>
+              <Text style={styles.recentCardDate}>29 Oct</Text>
+              <Text style={styles.recentCardScore}>0%</Text>
+              <Text style={styles.recentCardFraction}>0/100</Text>
             </TouchableOpacity>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>
-              {currentStep === 'categories' && 'Exam Categories'}
-              {currentStep === 'subcategories' && (selectedCategory?.name || 'SSC')}
-              {currentStep === 'papers' && 'Previous Year Papers'}
-            </Text>
-            <Text style={styles.headerSubtitle}>
-              {currentStep === 'categories' && 'Select an exam category to continue'}
-              {currentStep === 'subcategories' && 'Select exam preparation stream'}
-              {currentStep === 'papers' && 'Select official paper shift and section'}
-            </Text>
+
+            {/* Card 2 */}
+            <TouchableOpacity
+              style={styles.recentCard}
+              activeOpacity={0.8}
+              onPress={() => handleSelectPaper('UPSC 2015 Paper 1')}
+            >
+              <Text style={styles.recentCardTitle} numberOfLines={1}>UPSC 2015 Pap...</Text>
+              <Text style={styles.recentCardDate}>29 Oct</Text>
+              <Text style={styles.recentCardScore}>2%</Text>
+              <Text style={styles.recentCardFraction}>5/100</Text>
+            </TouchableOpacity>
+
+            {/* Card 3 */}
+            <TouchableOpacity
+              style={styles.recentCard}
+              activeOpacity={0.8}
+              onPress={() => handleSelectPaper('UPSC 2015 Paper 2')}
+            >
+              <Text style={styles.recentCardTitle} numberOfLines={1}>UPSC 2015 Pap...</Text>
+              <Text style={styles.recentCardDate}>21 Oct</Text>
+              <Text style={styles.recentCardScore}>0%</Text>
+              <Text style={styles.recentCardFraction}>1/100</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        {/* ========================================================================= */}
+        {/* VIEW 1: CATEGORIES GRID (SCREENSHOT 1) */}
+        {/* ========================================================================= */}
+        {subView === 'categories' && (
+          <View style={styles.gridContainer}>
+            {/* UPSC */}
+            <TouchableOpacity
+              style={styles.gridCard}
+              activeOpacity={0.85}
+              onPress={() => setSubView('subexams')}
+            >
+              <CategoryEmblem type="upsc" />
+              <View style={styles.gridCardText}>
+                <Text style={styles.gridCardTitle}>UPSC</Text>
+                <Text style={styles.gridCardSub}>1 exam blocks</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* SSC (Main Target Flow) */}
+            <TouchableOpacity
+              style={styles.gridCard}
+              activeOpacity={0.85}
+              onPress={() => setSubView('subexams')}
+            >
+              <CategoryEmblem type="ssc" />
+              <View style={styles.gridCardText}>
+                <Text style={styles.gridCardTitle}>SSC</Text>
+                <Text style={styles.gridCardSub}>39 exam blocks</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* APPSC */}
+            <TouchableOpacity
+              style={styles.gridCard}
+              activeOpacity={0.85}
+              onPress={() => setSubView('subexams')}
+            >
+              <CategoryEmblem type="appsc" />
+              <View style={styles.gridCardText}>
+                <Text style={styles.gridCardTitle}>APPSC</Text>
+                <Text style={styles.gridCardSub}>37 exam blocks</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* RRB */}
+            <TouchableOpacity
+              style={styles.gridCard}
+              activeOpacity={0.85}
+              onPress={() => setSubView('subexams')}
+            >
+              <CategoryEmblem type="rrb" />
+              <View style={styles.gridCardText}>
+                <Text style={styles.gridCardTitle}>RRB</Text>
+                <Text style={styles.gridCardSub}>12 exam blocks</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-        </View>
+        )}
 
-        {/* Step indicator pills */}
-        <View style={styles.breadcrumbRow}>
-          <TouchableOpacity
-            style={[styles.crumbPill, currentStep === 'categories' && styles.crumbPillActive]}
-            onPress={() => setCurrentStep('categories')}
-          >
-            <Text style={[styles.crumbText, currentStep === 'categories' && styles.crumbTextActive]}>
-              1. Category
-            </Text>
-          </TouchableOpacity>
-          <Ionicons name="chevron-forward" size={14} color="#93C5FD" />
-          <TouchableOpacity
-            style={[styles.crumbPill, currentStep === 'subcategories' && styles.crumbPillActive]}
-            onPress={() => selectedCategory && setCurrentStep('subcategories')}
-            disabled={!selectedCategory}
-          >
-            <Text style={[styles.crumbText, currentStep === 'subcategories' && styles.crumbTextActive]}>
-              2. Subcategory
-            </Text>
-          </TouchableOpacity>
-          <Ionicons name="chevron-forward" size={14} color="#93C5FD" />
-          <View style={[styles.crumbPill, currentStep === 'papers' && styles.crumbPillActive]}>
-            <Text style={[styles.crumbText, currentStep === 'papers' && styles.crumbTextActive]}>
-              3. Papers
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.loadingText}>Fetching tests from database...</Text>
-        </View>
-      ) : (
-        <ScrollView style={styles.contentContainer} contentContainerStyle={{ paddingBottom: 30 }}>
-          {/* SCREEN 2: EXAM CATEGORIES */}
-          {currentStep === 'categories' && (
-            <View style={styles.stepSection}>
-              <Text style={styles.stepPrompt}>Available Competitive Exam Categories</Text>
-              {categories.map((cat) => (
-                <TouchableOpacity
-                  key={cat.id}
-                  style={styles.card}
-                  onPress={() => handleSelectCategory(cat)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.iconCircle}>
-                    <Ionicons name="school" size={28} color="#2563EB" />
-                  </View>
-                  <View style={styles.cardContent}>
-                    <Text style={styles.cardTitle}>{cat.name}</Text>
-                    <Text style={styles.cardDesc}>
-                      {cat.description || 'Staff Selection Commission - Tier 1 & Tier 2'}
-                    </Text>
-                    <View style={styles.tagBadge}>
-                      <Text style={styles.tagBadgeText}>1 Stream Active</Text>
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {/* SCREEN 3: SSC SUBCATEGORY */}
-          {currentStep === 'subcategories' && (
-            <View style={styles.stepSection}>
-              <Text style={styles.stepPrompt}>Select Exam Stream under {selectedCategory?.name}</Text>
+        {/* ========================================================================= */}
+        {/* VIEW 2: SUB-EXAM LIST FOR SSC (SCREENSHOT 2) */}
+        {/* ========================================================================= */}
+        {subView === 'subexams' && (
+          <View style={styles.subFlowContainer}>
+            {/* Active Category Header Card */}
+            <View style={styles.activeCategoryCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <CategoryEmblem type="ssc" />
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={styles.activeCatTitle}>SSC</Text>
+                  <Text style={styles.activeCatSub}>39 exam blocks</Text>
+                </View>
+              </View>
               <TouchableOpacity
-                style={styles.card}
-                onPress={handleSelectSubCategory}
-                activeOpacity={0.7}
+                style={styles.allGroupsBtn}
+                onPress={() => setSubView('categories')}
               >
-                <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
-                  <Ionicons name="time" size={28} color="#D97706" />
-                </View>
-                <View style={styles.cardContent}>
-                  <Text style={styles.cardTitle}>SSC CGL Previous Year Papers</Text>
-                  <Text style={styles.cardDesc}>
-                    Real examination papers with official sectional time limits and scoring patterns.
-                  </Text>
-                  <View style={styles.tagBadge}>
-                    <Text style={styles.tagBadgeText}>1 Paper Available</Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
+                <Text style={styles.allGroupsBtnText}>All groups</Text>
               </TouchableOpacity>
             </View>
-          )}
 
-          {/* SCREEN 4: PREVIOUS-YEAR PAPERS */}
-          {currentStep === 'papers' && (
-            <View style={styles.stepSection}>
-              <Text style={styles.stepPrompt}>Available Previous Year Papers</Text>
-              {exams.map((exam) => (
-                <View key={exam.id} style={styles.paperCard}>
-                  <View style={styles.paperHeader}>
-                    <View style={styles.yearBadge}>
-                      <Text style={styles.yearBadgeText}>2025 • Shift 1</Text>
-                    </View>
-                    <Text style={styles.paperTag}>Official Shift</Text>
-                  </View>
+            {/* Sub-exam title */}
+            <Text style={styles.chooseSubTitle}>Choose a sub-exam</Text>
 
-                  <Text style={styles.paperTitle}>{exam.title}</Text>
-                  <Text style={styles.paperDesc}>{exam.description}</Text>
+            {/* Sub-exam cards */}
+            <TouchableOpacity
+              style={styles.subExamCard}
+              activeOpacity={0.8}
+              onPress={() => setSubView('papers')}
+            >
+              <Text style={styles.subExamTitle}>SSC CGL Previous Year Papers</Text>
+              <Text style={styles.subExamCount}>20 mock tests</Text>
+            </TouchableOpacity>
 
-                  {/* Section Selection: English Section Initially */}
-                  <View style={styles.sectionsContainer}>
-                    <Text style={styles.sectionLabel}>Available Test Sections:</Text>
-                    
-                    <TouchableOpacity
-                      style={styles.sectionPillActive}
-                      onPress={() => handleSelectExam(exam)}
-                    >
-                      <View style={styles.secLeft}>
-                        <Ionicons name="checkmark-circle" size={20} color="#2563EB" />
-                        <View>
-                          <Text style={styles.secTitle}>English Comprehension</Text>
-                          <Text style={styles.secMeta}>25 Questions • 15 Mins • 50 Marks</Text>
-                        </View>
-                      </View>
-                      <View style={styles.startBadge}>
-                        <Text style={styles.startBadgeText}>Select</Text>
-                      </View>
-                    </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.subExamCard}
+              activeOpacity={0.8}
+              onPress={() => setSubView('papers')}
+            >
+              <Text style={styles.subExamTitle}>SSC CGL Mock Tests</Text>
+              <Text style={styles.subExamCount}>3 mock tests</Text>
+            </TouchableOpacity>
 
-                    {/* Placeholder for future sections */}
-                    <View style={styles.sectionPillDisabled}>
-                      <View style={styles.secLeft}>
-                        <Ionicons name="lock-closed" size={18} color="#94A3B8" />
-                        <View>
-                          <Text style={styles.secTitleDisabled}>General Intelligence & Reasoning</Text>
-                          <Text style={styles.secMetaDisabled}>Admin can enable in panel</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.comingSoon}>Coming Soon</Text>
-                    </View>
+            <TouchableOpacity
+              style={styles.subExamCard}
+              activeOpacity={0.8}
+              onPress={() => setSubView('papers')}
+            >
+              <Text style={styles.subExamTitle}>SSC CHSL Previous Year Papers</Text>
+              <Text style={styles.subExamCount}>10 mock tests</Text>
+            </TouchableOpacity>
 
-                    <View style={styles.sectionPillDisabled}>
-                      <View style={styles.secLeft}>
-                        <Ionicons name="lock-closed" size={18} color="#94A3B8" />
-                        <View>
-                          <Text style={styles.secTitleDisabled}>Quantitative Aptitude</Text>
-                          <Text style={styles.secMetaDisabled}>Admin can enable in panel</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.comingSoon}>Coming Soon</Text>
-                    </View>
+            <TouchableOpacity
+              style={styles.subExamCard}
+              activeOpacity={0.8}
+              onPress={() => setSubView('papers')}
+            >
+              <Text style={styles.subExamTitle}>SSC MTS Previous Year Papers</Text>
+              <Text style={styles.subExamCount}>6 mock tests</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-                    <View style={styles.sectionPillDisabled}>
-                      <View style={styles.secLeft}>
-                        <Ionicons name="lock-closed" size={18} color="#94A3B8" />
-                        <View>
-                          <Text style={styles.secTitleDisabled}>General Awareness</Text>
-                          <Text style={styles.secMetaDisabled}>Admin can enable in panel</Text>
-                        </View>
-                      </View>
-                      <Text style={styles.comingSoon}>Coming Soon</Text>
-                    </View>
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.launchBtn}
-                    onPress={() => handleSelectExam(exam)}
-                  >
-                    <Text style={styles.launchBtnText}>Proceed with English Section</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
+        {/* ========================================================================= */}
+        {/* VIEW 3: PAPERS LIST (SCREENSHOT 3) */}
+        {/* ========================================================================= */}
+        {subView === 'papers' && (
+          <View style={styles.subFlowContainer}>
+            {/* Active Sub-exam Header Card */}
+            <View style={styles.activeCategoryCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                <CategoryEmblem type="ssc" />
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <Text style={styles.activeCatTitle} numberOfLines={1}>
+                    SSC / SSC CGL Previous Year Papers
+                  </Text>
+                  <Text style={styles.activeCatSub}>39 exam blocks</Text>
                 </View>
-              ))}
+              </View>
+              <TouchableOpacity
+                style={styles.allGroupsBtn}
+                onPress={() => setSubView('subexams')}
+              >
+                <Text style={styles.allGroupsBtnText}>All sub-exams</Text>
+              </TouchableOpacity>
             </View>
-          )}
-        </ScrollView>
-      )}
+
+            {/* Papers list */}
+            {/* Paper 1: SSC CGL T-I (Held on 12 Sep 2025 S1) – English */}
+            <TouchableOpacity
+              style={styles.paperCard}
+              activeOpacity={0.85}
+              onPress={() => handleSelectPaper('SSC CGL T-I (Held on 12 Sep 2025 S1) – English')}
+            >
+              <View style={styles.paperIconBox}>
+                <Ionicons name="document-text-outline" size={24} color="#0D9488" />
+              </View>
+              <View style={styles.paperInfo}>
+                <Text style={styles.paperTitle}>
+                  SSC CGL T-I (Held on 12 Sep 2025 S1) – English
+                </Text>
+                <View style={styles.paperMetaRow}>
+                  <View style={styles.mediumBadge}>
+                    <Text style={styles.mediumBadgeText}>Medium</Text>
+                  </View>
+                  <Text style={styles.paperDetailsText}>60 min 100 Qs</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            {/* Paper 2 */}
+            <TouchableOpacity
+              style={styles.paperCard}
+              activeOpacity={0.85}
+              onPress={() => handleSelectPaper('SSC CGL T-I Similar Paper (Held on 12 Sep 2025 S2) – English')}
+            >
+              <View style={styles.paperIconBox}>
+                <Ionicons name="document-text-outline" size={24} color="#0D9488" />
+              </View>
+              <View style={styles.paperInfo}>
+                <Text style={styles.paperTitle}>
+                  SSC CGL T-I Similar Paper (Held on 12 Sep 2025 S2) – English
+                </Text>
+                <View style={styles.paperMetaRow}>
+                  <View style={styles.mediumBadge}>
+                    <Text style={styles.mediumBadgeText}>Medium</Text>
+                  </View>
+                  <Text style={styles.paperDetailsText}>60 min 100 Qs</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            {/* Paper 3 */}
+            <TouchableOpacity
+              style={styles.paperCard}
+              activeOpacity={0.85}
+              onPress={() => handleSelectPaper('SSC CGL Tier 1 2024 Set 1')}
+            >
+              <View style={styles.paperIconBox}>
+                <Ionicons name="document-text-outline" size={24} color="#0D9488" />
+              </View>
+              <View style={styles.paperInfo}>
+                <Text style={styles.paperTitle}>SSC CGL Tier 1 2024 Set 1</Text>
+                <View style={styles.paperMetaRow}>
+                  <View style={styles.mediumBadge}>
+                    <Text style={styles.mediumBadgeText}>Medium</Text>
+                  </View>
+                  <Text style={styles.paperDetailsText}>60 min 100 Qs</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            {/* Paper 4 */}
+            <TouchableOpacity
+              style={styles.paperCard}
+              activeOpacity={0.85}
+              onPress={() => handleSelectPaper('SSC CGL Tier 1 2024 Set 2')}
+            >
+              <View style={styles.paperIconBox}>
+                <Ionicons name="document-text-outline" size={24} color="#0D9488" />
+              </View>
+              <View style={styles.paperInfo}>
+                <Text style={styles.paperTitle}>SSC CGL Tier 1 2024 Set 2</Text>
+                <View style={styles.paperMetaRow}>
+                  <View style={styles.mediumBadge}>
+                    <Text style={styles.mediumBadgeText}>Medium</Text>
+                  </View>
+                  <Text style={styles.paperDetailsText}>60 min 99 Qs</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -288,266 +398,281 @@ export default function TestsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#1E3A8A',
-  },
-  header: {
-    backgroundColor: '#1E3A8A',
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 18,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  backButton: {
-    marginRight: 14,
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: '#BFDBFE',
-    marginTop: 2,
-  },
-  breadcrumbRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  crumbPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  crumbPillActive: {
-    backgroundColor: '#2563EB',
-  },
-  crumbText: {
-    fontSize: 11,
-    color: '#BFDBFE',
-    fontWeight: '500',
-  },
-  crumbTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  contentContainer: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  stepSection: {
-    padding: 16,
-  },
-  stepPrompt: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#64748B',
-  },
-  card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? 36 : 12,
+    paddingBottom: 40,
+  },
+  topHeader: {
+    marginBottom: 16,
+  },
+  screenTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.5,
+  },
+  screenSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 4,
+    fontWeight: '400',
+  },
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
-  iconCircle: {
-    width: 52,
-    height: 52,
     borderRadius: 14,
-    backgroundColor: '#EFF6FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 14,
+    paddingHorizontal: 14,
+    height: 46,
+    marginBottom: 20,
   },
-  cardContent: {
+  searchInput: {
     flex: 1,
+    fontSize: 14,
+    color: '#0F172A',
   },
-  cardTitle: {
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#0F172A',
   },
-  cardDesc: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 3,
-    lineHeight: 17,
-  },
-  tagBadge: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-    marginTop: 6,
-  },
-  tagBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  paperCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-  },
-  paperHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  yearBadge: {
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  yearBadgeText: {
-    color: '#2563EB',
+  sectionBadgeText: {
     fontSize: 12,
     fontWeight: '700',
+    color: '#0D9488',
   },
-  paperTag: {
-    fontSize: 12,
-    color: '#10B981',
-    fontWeight: '600',
+  recentSection: {
+    marginBottom: 24,
   },
-  paperTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#0F172A',
-    lineHeight: 24,
-    marginBottom: 6,
-  },
-  paperDesc: {
-    fontSize: 13,
-    color: '#64748B',
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  sectionsContainer: {
-    marginBottom: 18,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-    marginBottom: 8,
-  },
-  sectionPillActive: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#2563EB',
-    marginBottom: 8,
-  },
-  secLeft: {
+  recentHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    flex: 1,
+    marginBottom: 12,
   },
-  secTitle: {
+  recentTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#0F172A',
   },
-  secMeta: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
+  recentScrollContent: {
+    paddingRight: 8,
+    gap: 12,
   },
-  startBadge: {
-    backgroundColor: '#2563EB',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  startBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  sectionPillDisabled: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  recentCard: {
+    width: 132,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    marginBottom: 8,
-    opacity: 0.6,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  secTitleDisabled: {
+  recentCardTitle: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#64748B',
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 4,
   },
-  secMetaDisabled: {
+  recentCardDate: {
     fontSize: 11,
     color: '#94A3B8',
-    marginTop: 2,
+    marginBottom: 8,
   },
-  comingSoon: {
+  recentCardScore: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#EF4444',
+    marginBottom: 2,
+  },
+  recentCardFraction: {
     fontSize: 11,
-    fontWeight: '600',
     color: '#94A3B8',
+    fontWeight: '500',
   },
-  launchBtn: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 14,
-    flexDirection: 'row',
+  emblemBase: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
   },
-  launchBtnText: {
-    color: '#FFFFFF',
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  gridCard: {
+    width: '48%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  gridCardText: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  gridCardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  gridCardSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  subFlowContainer: {
+    gap: 12,
+  },
+  activeCategoryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 8,
+  },
+  activeCatTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  activeCatSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  allGroupsBtn: {
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  allGroupsBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0D9488',
+  },
+  chooseSubTitle: {
     fontSize: 15,
     fontWeight: '700',
+    color: '#0F172A',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  subExamCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  subExamTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  subExamCount: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+  },
+  paperCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  paperIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  paperInfo: {
+    flex: 1,
+  },
+  paperTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    lineHeight: 20,
+  },
+  paperMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 8,
+  },
+  mediumBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  mediumBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  paperDetailsText: {
+    fontSize: 12,
+    color: '#64748B',
   },
 });

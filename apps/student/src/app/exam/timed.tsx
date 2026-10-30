@@ -1,5 +1,5 @@
 // ==============================================================================
-// SCREEN 6: TIMED MODE EXAMINATION ENGINE
+// VIBHILLION AI: TIMED EXAMINATION ENGINE (MATCHING SCREENSHOTS 7 & 8)
 // File: apps/student/src/app/exam/timed.tsx
 // ==============================================================================
 
@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Modal,
+  Platform,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -28,106 +29,75 @@ interface AnswerState {
   visited: boolean;
 }
 
+const SECTION_TABS = [
+  { id: 'english', name: 'English', start: 0, count: 25 },
+  { id: 'reasoning', name: 'Reasoning', start: 25, count: 25 },
+  { id: 'quant', name: 'Quant', start: 50, count: 25 },
+  { id: 'ga', name: 'General Awareness', start: 75, count: 25 },
+];
+
 export default function TimedExamScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const examId = (params.examId as string) || 'e0000001-0000-0000-0000-000000000001';
-  const sectionId = (params.sectionId as string) || 'a0000001-0000-0000-0000-000000000001';
-  const sectionName = (params.sectionName as string) || 'English Comprehension';
+  const paperTitle =
+    (params.paperTitle as string) || 'SSC CGL T-I (Held on 12 Sep 2025 S1) – English';
 
-  // Test states
+  // 100 Questions suite
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, AnswerState>>({});
   const [attemptId, setAttemptId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+
+  // 60-Minute Countdown Timer (3600 seconds)
+  const [totalTimeRemaining, setTotalTimeRemaining] = useState(3600);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showPaletteModal, setShowPaletteModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Timers (Section timer & Total timer in seconds)
-  // Section duration: 15 mins (900s), Total duration: 60 mins (3600s)
-  const [sectionTimeRemaining, setSectionTimeRemaining] = useState(900);
-  const [totalTimeRemaining, setTotalTimeRemaining] = useState(3600);
-
-  // Question palette modal
-  const [showPalette, setShowPalette] = useState(false);
-  const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [bookmarkedMap, setBookmarkedMap] = useState<Record<string, boolean>>({});
-
-  // Question start time tracking for per-question time spent
+  // Time tracking per question
   const questionStartTimeRef = useRef<number>(Date.now());
 
-  // Initialize Exam & Questions
   useEffect(() => {
-    async function initExam() {
+    async function loadTest() {
       try {
         setLoading(true);
         const [qData, attempt] = await Promise.all([
-          examService.getExamQuestions(examId, sectionId),
+          examService.getExamQuestions(examId),
           examService.startAttempt(examId, 'timed'),
         ]);
 
         setQuestions(qData);
         setAttemptId(attempt.id);
 
-        // Initialize answer states
         const initialAnswers: Record<string, AnswerState> = {};
         qData.forEach((q: Question, idx: number) => {
           initialAnswers[q.id] = {
             optionId: null,
             timeSpent: 0,
             marked: false,
-            visited: idx === 0, // Mark first question visited
+            visited: idx === 0,
           };
         });
         setAnswers(initialAnswers);
-
-        // Load existing bookmarks
-        examService.getBookmarks().then((bms) => {
-          const bmMap: Record<string, boolean> = {};
-          bms.forEach((b) => (bmMap[b.question_id] = true));
-          setBookmarkedMap(bmMap);
-        });
       } finally {
         setLoading(false);
         questionStartTimeRef.current = Date.now();
       }
     }
-    initExam();
-  }, [examId, sectionId]);
+    loadTest();
+  }, [examId]);
 
-  const handleToggleBookmarkCurrent = async () => {
-    const currentQ = questions[currentIndex];
-    if (!currentQ) return;
-    const isNow = await examService.toggleBookmark({
-      id: currentQ.id,
-      question_text: currentQ.question_text,
-      topic: currentQ.topic,
-      subtopic: currentQ.subtopic,
-      difficulty: currentQ.difficulty,
-      section_name: sectionName,
-      options: currentQ.options,
-      explanation: currentQ.explanation,
-      solution_steps: currentQ.solution_steps,
-    });
-    setBookmarkedMap((prev) => ({ ...prev, [currentQ.id]: isNow }));
-  };
-
-  // Main countdown timer interval
+  // Timer countdown
   useEffect(() => {
     if (loading || isSubmitting) return;
 
     const timer = setInterval(() => {
-      setSectionTimeRemaining((prev) => {
-        if (prev <= 1) {
-          handleSectionTimeout();
-          return 0;
-        }
-        return prev - 1;
-      });
-
       setTotalTimeRemaining((prev) => {
         if (prev <= 1) {
-          handleAutoSubmit('Total exam duration expired');
+          clearInterval(timer);
+          handleAutoSubmit();
           return 0;
         }
         return prev - 1;
@@ -137,12 +107,10 @@ export default function TimedExamScreen() {
     return () => clearInterval(timer);
   }, [loading, isSubmitting]);
 
-  // Record time spent on current question when leaving it
-  const recordQuestionTime = () => {
+  const recordTimeSpent = () => {
     const currentQ = questions[currentIndex];
     if (!currentQ) return;
     const elapsed = Math.round((Date.now() - questionStartTimeRef.current) / 1000);
-
     setAnswers((prev) => ({
       ...prev,
       [currentQ.id]: {
@@ -150,7 +118,6 @@ export default function TimedExamScreen() {
         timeSpent: (prev[currentQ.id]?.timeSpent || 0) + elapsed,
       },
     }));
-
     questionStartTimeRef.current = Date.now();
   };
 
@@ -159,56 +126,33 @@ export default function TimedExamScreen() {
     if (!currentQ) return;
 
     setAnswers((prev) => {
-      const nextState = {
+      const isSelected = prev[currentQ.id]?.optionId === optionId;
+      return {
         ...prev,
         [currentQ.id]: {
           ...prev[currentQ.id],
-          optionId: prev[currentQ.id]?.optionId === optionId ? null : optionId,
+          optionId: isSelected ? null : optionId,
           visited: true,
         },
       };
-
-      // Persist answer asynchronously
-      examService.recordAnswer(
-        attemptId,
-        currentQ.id,
-        nextState[currentQ.id].optionId,
-        nextState[currentQ.id].timeSpent,
-        nextState[currentQ.id].marked
-      );
-
-      return nextState;
     });
   };
 
-  const handleToggleMarkForReview = () => {
+  const handleToggleMark = () => {
     const currentQ = questions[currentIndex];
     if (!currentQ) return;
 
-    setAnswers((prev) => {
-      const isMarked = !prev[currentQ.id]?.marked;
-      const nextState = {
-        ...prev,
-        [currentQ.id]: {
-          ...prev[currentQ.id],
-          marked: isMarked,
-          visited: true,
-        },
-      };
-
-      examService.recordAnswer(
-        attemptId,
-        currentQ.id,
-        nextState[currentQ.id].optionId,
-        nextState[currentQ.id].timeSpent,
-        isMarked
-      );
-
-      return nextState;
-    });
+    setAnswers((prev) => ({
+      ...prev,
+      [currentQ.id]: {
+        ...prev[currentQ.id],
+        marked: !prev[currentQ.id]?.marked,
+        visited: true,
+      },
+    }));
   };
 
-  const handleClearResponse = () => {
+  const handleClear = () => {
     const currentQ = questions[currentIndex];
     if (!currentQ) return;
 
@@ -219,21 +163,13 @@ export default function TimedExamScreen() {
         optionId: null,
       },
     }));
-
-    examService.recordAnswer(
-      attemptId,
-      currentQ.id,
-      null,
-      answers[currentQ.id]?.timeSpent || 0,
-      answers[currentQ.id]?.marked || false
-    );
   };
 
-  const handleNavigateQuestion = (nextIndex: number) => {
-    if (nextIndex < 0 || nextIndex >= questions.length) return;
-    recordQuestionTime();
+  const handleNavigate = (targetIdx: number) => {
+    if (targetIdx < 0 || targetIdx >= questions.length) return;
+    recordTimeSpent();
 
-    const targetQ = questions[nextIndex];
+    const targetQ = questions[targetIdx];
     setAnswers((prev) => ({
       ...prev,
       [targetQ.id]: {
@@ -242,181 +178,191 @@ export default function TimedExamScreen() {
       },
     }));
 
-    setCurrentIndex(nextIndex);
+    setCurrentIndex(targetIdx);
   };
 
-  const handleSectionTimeout = () => {
+  const handleMarkAndNext = () => {
+    handleToggleMark();
+    if (currentIndex < questions.length - 1) {
+      handleNavigate(currentIndex + 1);
+    }
+  };
+
+  const handleQuitPrompt = () => {
     Alert.alert(
-      'Section Time Expired',
-      'The time limit for this section has ended. Submitting section answers.',
-      [{ text: 'OK', onPress: () => handleFinalSubmit() }]
+      'Quit Examination?',
+      'Are you sure you want to quit? Your current answers will be submitted as an incomplete attempt.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Quit & Submit', style: 'destructive', onPress: () => handleFinalSubmit() },
+      ]
     );
   };
 
-  const handleAutoSubmit = (reason: string) => {
-    Alert.alert('Time Up', `${reason}. Your answers are being submitted.`, [
-      { text: 'OK', onPress: () => handleFinalSubmit() },
-    ]);
+  const handleAutoSubmit = async () => {
+    Alert.alert('Time Up', 'The 60-minute duration has expired. Submitting your test automatically.');
+    await handleFinalSubmit();
   };
 
   const handleFinalSubmit = async () => {
-    if (isSubmitting) return;
-    recordQuestionTime();
-    setIsSubmitting(true);
-    setShowSubmitModal(false);
-
+    recordTimeSpent();
     try {
+      setIsSubmitting(true);
+      setShowSubmitModal(false);
+
       const summary = await examService.submitAttempt(attemptId, answers);
 
-      // Navigate to Screen 8: Result Screen
       router.replace({
         pathname: '/exam/result',
         params: {
-          attemptId,
-          examTitle: summary.exam_title,
-          totalQuestions: summary.total_questions,
-          attemptedCount: summary.attempted_count,
-          unattemptedCount: summary.unattempted_count,
-          correctCount: summary.correct_count,
-          wrongCount: summary.wrong_count,
-          finalScore: summary.final_score,
-          maximumScore: summary.maximum_score,
-          accuracyPercentage: summary.accuracy_percentage,
-          totalTimeSeconds: summary.total_time_seconds,
-          rank: summary.rank || 1,
-          percentile: summary.percentile || 95,
+          attemptId: summary.attempt_id,
+          paperTitle,
+          totalQuestions: String(summary.total_questions),
+          attemptedCount: String(summary.attempted_count),
+          unattemptedCount: String(summary.unattempted_count),
+          correctCount: String(summary.correct_count),
+          wrongCount: String(summary.wrong_count),
+          finalScore: String(summary.final_score),
+          maximumScore: String(summary.maximum_score),
+          accuracyPercentage: String(summary.accuracy_percentage),
+          totalTimeSeconds: String(3600 - totalTimeRemaining),
           answersJson: JSON.stringify(answers),
         },
       });
-    } catch (err: any) {
-      Alert.alert('Submission Error', err.message || 'Failed to submit test. Please retry.');
+    } finally {
       setIsSubmitting(false);
     }
   };
 
   if (loading || questions.length === 0) {
     return (
-      <SafeAreaView style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={styles.loadingText}>Loading examination paper...</Text>
+      <SafeAreaView style={styles.loadingCenter}>
+        <ActivityIndicator size="large" color="#0D9488" />
+        <Text style={styles.loadingText}>Preparing 100 Questions Mock Test...</Text>
       </SafeAreaView>
     );
   }
 
   const currentQ = questions[currentIndex];
-  const currentAnswer = answers[currentQ.id];
+  const currentAnswer = answers[currentQ?.id] || { optionId: null, timeSpent: 0, marked: false, visited: true };
 
-  // Palette Counts
+  // Calculate stats for top bar & submit modal
   let answeredCount = 0;
   let markedCount = 0;
-  let unattemptedCount = 0;
+  let unansweredCount = 0;
 
   questions.forEach((q) => {
     const a = answers[q.id];
     if (a?.optionId) answeredCount++;
-    else unattemptedCount++;
+    else unansweredCount++;
     if (a?.marked) markedCount++;
   });
 
+  const activeSectionTab =
+    currentIndex < 25
+      ? 0
+      : currentIndex < 50
+      ? 1
+      : currentIndex < 75
+      ? 2
+      : 3;
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
-      {/* Top Bar with Timers */}
+      {/* TOP HEADER (SCREENSHOT 7) */}
       <View style={styles.topBar}>
-        <View>
-          <Text style={styles.topSectionName}>{sectionName}</Text>
-          <Text style={styles.topTotalTime}>
-            Total Left: {formatDuration(totalTimeRemaining)}
+        <TouchableOpacity onPress={handleQuitPrompt} style={styles.quitBtn}>
+          <Text style={styles.quitText}>Quit</Text>
+        </TouchableOpacity>
+
+        <View style={styles.timerCenter}>
+          <Text style={styles.timerText}>{formatDuration(totalTimeRemaining)}</Text>
+          <Text style={styles.questionIndexText}>
+            Q {currentIndex + 1}/{questions.length}
           </Text>
         </View>
 
-        <View style={styles.timerBadge}>
-          <Ionicons name="time" size={16} color="#DC2626" />
-          <Text style={styles.timerText}>
-            Sec: {formatDuration(sectionTimeRemaining)}
+        <TouchableOpacity onPress={handleToggleMark} style={styles.markBtn}>
+          <Ionicons
+            name={currentAnswer.marked ? 'flag' : 'flag-outline'}
+            size={18}
+            color={currentAnswer.marked ? '#A855F7' : '#64748B'}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.markText, currentAnswer.marked && { color: '#A855F7' }]}>
+            Mark
           </Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.paletteTrigger}
-          onPress={() => setShowPalette(true)}
-        >
-          <Ionicons name="grid" size={20} color="#FFFFFF" />
-          <Text style={styles.paletteTriggerText}>Grid</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Sub-header with Q-number and Mark for review */}
+      {/* SUB-HEADER / PROGRESS BAR */}
       <View style={styles.subHeader}>
-        <Text style={styles.qIndexText}>
-          Question {currentIndex + 1} of {questions.length}
+        <Text style={styles.subHeaderText}>
+          {answeredCount}/{questions.length} answered • {markedCount} marked for review
         </Text>
-        <View style={styles.subHeaderActions}>
-          <TouchableOpacity
-            style={[styles.reviewBtn, currentAnswer?.marked && styles.reviewBtnActive]}
-            onPress={handleToggleMarkForReview}
-          >
-            <Ionicons
-              name={currentAnswer?.marked ? 'bookmark' : 'bookmark-outline'}
-              size={16}
-              color={currentAnswer?.marked ? '#8B5CF6' : '#64748B'}
-            />
-            <Text
-              style={[
-                styles.reviewBtnText,
-                currentAnswer?.marked && styles.reviewBtnTextActive,
-              ]}
-            >
-              {currentAnswer?.marked ? 'Marked' : 'Mark for Review'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.clearBtn} onPress={handleClearResponse}>
-            <Text style={styles.clearBtnText}>Clear</Text>
-          </TouchableOpacity>
+        <View style={styles.progressBarTrack}>
+          <View
+            style={[
+              styles.progressBarFill,
+              { width: `${(answeredCount / questions.length) * 100}%` },
+            ]}
+          />
         </View>
       </View>
 
-      {/* Main Question Body */}
-      <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.questionCard}>
-          <View style={styles.qMetaRow}>
-            <View style={styles.diffBadge}>
-              <Text style={styles.diffText}>{currentQ.difficulty.toUpperCase()}</Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={styles.marksText}>+2.0, -0.5</Text>
-              <TouchableOpacity onPress={handleToggleBookmarkCurrent} style={{ padding: 4 }}>
-                <Ionicons
-                  name={bookmarkedMap[currentQ.id] ? 'bookmark' : 'bookmark-outline'}
-                  size={18}
-                  color={bookmarkedMap[currentQ.id] ? '#2563EB' : '#94A3B8'}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
+      {/* 4 SECTION TABS */}
+      <View style={styles.sectionTabsRow}>
+        {SECTION_TABS.map((tab, idx) => (
+          <TouchableOpacity
+            key={tab.id}
+            style={[
+              styles.sectionTabBtn,
+              activeSectionTab === idx && styles.sectionTabBtnActive,
+            ]}
+            onPress={() => handleNavigate(tab.start)}
+          >
+            <Text
+              style={[
+                styles.sectionTabText,
+                activeSectionTab === idx && styles.sectionTabTextActive,
+              ]}
+              numberOfLines={1}
+            >
+              {tab.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-          <Text style={styles.questionText}>{currentQ.question_text}</Text>
+      {/* MAIN QUESTION SCROLLABLE AREA */}
+      <ScrollView
+        style={styles.mainContainer}
+        contentContainerStyle={styles.mainScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* SECTION PILL */}
+        <View style={styles.sectionBadgePill}>
+          <Text style={styles.sectionBadgeText}>{currentQ.topic || 'Reasoning'}</Text>
         </View>
 
-        {/* Options */}
+        {/* QUESTION TEXT */}
+        <Text style={styles.questionText}>{currentQ.question_text}</Text>
+
+        {/* 4 OPTIONS (A, B, C, D) */}
         <View style={styles.optionsList}>
           {currentQ.options?.map((opt) => {
-            const isSelected = currentAnswer?.optionId === opt.id;
+            const isSelected = currentAnswer.optionId === opt.id;
             return (
               <TouchableOpacity
                 key={opt.id}
                 style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                activeOpacity={0.8}
                 onPress={() => handleSelectOption(opt.id)}
-                activeOpacity={0.7}
               >
-                <View
-                  style={[styles.optionLabelCircle, isSelected && styles.optionLabelCircleSelected]}
-                >
-                  <Text
-                    style={[styles.optionLabelText, isSelected && styles.optionLabelTextSelected]}
-                  >
+                <View style={[styles.optionCircle, isSelected && styles.optionCircleSelected]}>
+                  <Text style={[styles.optionLetter, isSelected && styles.optionLetterSelected]}>
                     {opt.option_label}
                   </Text>
                 </View>
@@ -429,171 +375,199 @@ export default function TimedExamScreen() {
         </View>
       </ScrollView>
 
-      {/* Navigation Footer */}
-      <View style={styles.footer}>
+      {/* BOTTOM ACTION BAR (SCREENSHOT 7) */}
+      <View style={styles.bottomBar}>
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, currentIndex === 0 && { opacity: 0.3 }]}
+            onPress={() => handleNavigate(currentIndex - 1)}
+            disabled={currentIndex === 0}
+          >
+            <Ionicons name="chevron-back" size={16} color="#64748B" />
+            <Text style={styles.actionBtnText}>Prev</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionBtn} onPress={handleClear}>
+            <Ionicons name="trash-outline" size={16} color="#64748B" />
+            <Text style={styles.actionBtnText}>Clear</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionBtn} onPress={handleMarkAndNext}>
+            <Ionicons name="bookmark-outline" size={16} color="#64748B" />
+            <Text style={styles.actionBtnText}>Mark & Next</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => setShowPaletteModal(true)}
+          >
+            <Ionicons name="grid-outline" size={20} color="#0F172A" />
+          </TouchableOpacity>
+        </View>
+
+        {/* PRIMARY ADVANCE / SUBMIT BUTTON */}
         <TouchableOpacity
-          style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-          onPress={() => handleNavigateQuestion(currentIndex - 1)}
-          disabled={currentIndex === 0}
+          style={styles.primaryNextBtn}
+          activeOpacity={0.85}
+          onPress={() => {
+            if (currentIndex === questions.length - 1) {
+              setShowSubmitModal(true);
+            } else {
+              handleNavigate(currentIndex + 1);
+            }
+          }}
         >
-          <Ionicons name="chevron-back" size={18} color={currentIndex === 0 ? '#94A3B8' : '#334155'} />
-          <Text style={[styles.navBtnText, currentIndex === 0 && styles.navBtnTextDisabled]}>
-            Previous
+          <Text style={styles.primaryNextBtnText}>
+            {currentIndex === questions.length - 1 ? 'Submit Test' : 'Next >'}
           </Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.submitTestBtn}
-          onPress={() => setShowSubmitModal(true)}
-        >
-          <Text style={styles.submitTestBtnText}>Submit</Text>
-        </TouchableOpacity>
-
-        {currentIndex === questions.length - 1 ? (
-          <TouchableOpacity
-            style={[styles.navBtn, styles.saveNextBtn]}
-            onPress={() => setShowSubmitModal(true)}
-          >
-            <Text style={styles.saveNextBtnText}>Finish</Text>
-            <Ionicons name="checkmark-done" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.navBtn, styles.saveNextBtn]}
-            onPress={() => handleNavigateQuestion(currentIndex + 1)}
-          >
-            <Text style={styles.saveNextBtnText}>Save & Next</Text>
-            <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        )}
       </View>
 
-      {/* QUESTION PALETTE MODAL */}
-      <Modal visible={showPalette} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.paletteContainer}>
-            <View style={styles.paletteHeader}>
-              <Text style={styles.paletteTitle}>Question Palette ({questions.length})</Text>
-              <TouchableOpacity onPress={() => setShowPalette(false)}>
-                <Ionicons name="close" size={24} color="#0F172A" />
-              </TouchableOpacity>
-            </View>
+      {/* ========================================================================= */}
+      {/* SUBMIT CONFIRMATION MODAL (SCREENSHOT 8) */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showSubmitModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSubmitModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.submitModalCard}>
+            <Text style={styles.submitModalTitle}>Submit Test?</Text>
 
-            {/* Legend */}
-            <View style={styles.legendRow}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
-                <Text style={styles.legendLabel}>Answered ({answeredCount})</Text>
+            <View style={styles.submitTable}>
+              <View style={styles.submitTableRow}>
+                <Text style={styles.submitTableLabel}>Total Questions</Text>
+                <Text style={styles.submitTableVal}>{questions.length}</Text>
               </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#EF4444' }]} />
-                <Text style={styles.legendLabel}>Not Answered ({unattemptedCount})</Text>
+              <View style={styles.submitTableDivider} />
+
+              <View style={styles.submitTableRow}>
+                <Text style={styles.submitTableLabel}>Answered</Text>
+                <Text style={[styles.submitTableVal, { color: '#0D9488' }]}>{answeredCount}</Text>
               </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#8B5CF6' }]} />
-                <Text style={styles.legendLabel}>Review ({markedCount})</Text>
+              <View style={styles.submitTableDivider} />
+
+              <View style={styles.submitTableRow}>
+                <Text style={styles.submitTableLabel}>Unanswered</Text>
+                <Text style={[styles.submitTableVal, { color: '#64748B' }]}>{unansweredCount}</Text>
               </View>
-            </View>
+              <View style={styles.submitTableDivider} />
 
-            {/* Question Grid */}
-            <ScrollView contentContainerStyle={styles.gridContainer}>
-              {questions.map((q, idx) => {
-                const ans = answers[q.id];
-                let bg = '#F1F5F9';
-                let txtColor = '#334155';
-
-                if (ans?.marked) {
-                  bg = '#8B5CF6';
-                  txtColor = '#FFFFFF';
-                } else if (ans?.optionId) {
-                  bg = '#10B981';
-                  txtColor = '#FFFFFF';
-                } else if (ans?.visited) {
-                  bg = '#EF4444';
-                  txtColor = '#FFFFFF';
-                }
-
-                if (idx === currentIndex) {
-                  // Current question border
-                }
-
-                return (
-                  <TouchableOpacity
-                    key={q.id}
-                    style={[
-                      styles.paletteButton,
-                      { backgroundColor: bg },
-                      idx === currentIndex && styles.paletteButtonCurrent,
-                    ]}
-                    onPress={() => {
-                      handleNavigateQuestion(idx);
-                      setShowPalette(false);
-                    }}
-                  >
-                    <Text style={[styles.paletteButtonText, { color: txtColor }]}>
-                      {idx + 1}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.closePaletteBtn}
-              onPress={() => setShowPalette(false)}
-            >
-              <Text style={styles.closePaletteBtnText}>Back to Test</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* CONFIRM SUBMISSION MODAL */}
-      <Modal visible={showSubmitModal} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.confirmModalCard}>
-            <Ionicons name="alert-circle" size={48} color="#2563EB" />
-            <Text style={styles.confirmTitle}>Submit Examination?</Text>
-            <Text style={styles.confirmDesc}>
-              Are you sure you want to finalize your submission? Once submitted, your answers cannot be modified.
-            </Text>
-
-            <View style={styles.confirmSummaryRow}>
-              <View style={styles.confirmStat}>
-                <Text style={styles.confirmStatNum}>{answeredCount}</Text>
-                <Text style={styles.confirmStatLabel}>Answered</Text>
-              </View>
-              <View style={styles.confirmStat}>
-                <Text style={styles.confirmStatNum}>{unattemptedCount}</Text>
-                <Text style={styles.confirmStatLabel}>Unattempted</Text>
-              </View>
-              <View style={styles.confirmStat}>
-                <Text style={styles.confirmStatNum}>{markedCount}</Text>
-                <Text style={styles.confirmStatLabel}>Review</Text>
+              <View style={styles.submitTableRow}>
+                <Text style={styles.submitTableLabel}>Marked for Review</Text>
+                <Text style={[styles.submitTableVal, { color: '#A855F7' }]}>{markedCount}</Text>
               </View>
             </View>
 
-            <View style={styles.modalActionsRow}>
+            <View style={styles.modalButtonsRow}>
               <TouchableOpacity
-                style={styles.cancelModalBtn}
+                style={styles.continueTestBtn}
                 onPress={() => setShowSubmitModal(false)}
-                disabled={isSubmitting}
               >
-                <Text style={styles.cancelModalBtnText}>Resume Test</Text>
+                <Text style={styles.continueTestBtnText}>Continue Test</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.confirmSubmitBtn}
+                style={styles.finalSubmitBtn}
                 onPress={handleFinalSubmit}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.confirmSubmitBtnText}>Yes, Submit Now</Text>
+                  <>
+                    <Ionicons name="paper-plane-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.finalSubmitBtnText}>Submit</Text>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* QUESTION PALETTE MODAL */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showPaletteModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPaletteModal(false)}
+      >
+        <View style={styles.paletteModalBackdrop}>
+          <View style={styles.paletteModalCard}>
+            <View style={styles.paletteModalHeader}>
+              <Text style={styles.paletteModalTitle}>Question Palette (100 Qs)</Text>
+              <TouchableOpacity onPress={() => setShowPaletteModal(false)}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 380 }}>
+              <View style={styles.paletteGrid}>
+                {questions.map((q, qIdx) => {
+                  const a = answers[q.id];
+                  const isCur = qIdx === currentIndex;
+                  const isAns = Boolean(a?.optionId);
+                  const isMark = Boolean(a?.marked);
+                  const isVisit = Boolean(a?.visited);
+
+                  let bg = '#FFFFFF';
+                  let border = '#CBD5E1';
+                  let textColor = '#475569';
+
+                  if (isAns && isMark) {
+                    bg = '#A855F7';
+                    border = '#A855F7';
+                    textColor = '#FFFFFF';
+                  } else if (isMark) {
+                    bg = '#A855F7';
+                    border = '#A855F7';
+                    textColor = '#FFFFFF';
+                  } else if (isAns) {
+                    bg = '#22C55E';
+                    border = '#22C55E';
+                    textColor = '#FFFFFF';
+                  } else if (isVisit) {
+                    bg = '#EF4444';
+                    border = '#EF4444';
+                    textColor = '#FFFFFF';
+                  }
+
+                  return (
+                    <TouchableOpacity
+                      key={q.id}
+                      style={[
+                        styles.paletteCell,
+                        { backgroundColor: bg, borderColor: border },
+                        isCur && { borderWidth: 2.5, borderColor: '#0F172A' },
+                      ]}
+                      onPress={() => {
+                        setShowPaletteModal(false);
+                        handleNavigate(qIdx);
+                      }}
+                    >
+                      <Text style={[styles.paletteCellText, { color: textColor }]}>
+                        {qIdx + 1}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.paletteSubmitQuickBtn}
+              onPress={() => {
+                setShowPaletteModal(false);
+                setShowSubmitModal(true);
+              }}
+            >
+              <Text style={styles.paletteSubmitQuickText}>Proceed to Submit Test</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -602,237 +576,355 @@ export default function TimedExamScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1E3A8A' },
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  loadingCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#64748B',
+    marginTop: 12,
+  },
   topBar: {
-    backgroundColor: '#1E3A8A',
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: Platform.OS === 'android' ? 36 : 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  topSectionName: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-  topTotalTime: { fontSize: 11, color: '#93C5FD', marginTop: 1 },
-  timerBadge: {
-    backgroundColor: '#FFFFFF',
+  quitBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  quitText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+  timerCenter: {
+    alignItems: 'center',
+  },
+  timerText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  questionIndexText: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  markBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
   },
-  timerText: { fontSize: 13, fontWeight: '700', color: '#DC2626' },
-  paletteTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
+  markText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
   },
-  paletteTriggerText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
   subHeader: {
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    backgroundColor: '#F8FAFC',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
-  qIndexText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  subHeaderActions: { flexDirection: 'row', gap: 8 },
-  reviewBtn: {
+  subHeaderText: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  progressBarTrack: {
+    height: 4,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: 4,
+    backgroundColor: '#0D9488',
+    borderRadius: 2,
+  },
+  sectionTabsRow: {
     flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    gap: 6,
+  },
+  sectionTabBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
     alignItems: 'center',
+  },
+  sectionTabBtnActive: {
+    backgroundColor: '#CCFBF1',
+  },
+  sectionTabText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  sectionTabTextActive: {
+    color: '#0D9488',
+    fontWeight: '700',
+  },
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  mainScrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
+  },
+  sectionBadgePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#CCFBF1',
+    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    gap: 4,
+    marginBottom: 12,
   },
-  reviewBtnActive: { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' },
-  reviewBtnText: { fontSize: 12, color: '#64748B', fontWeight: '500' },
-  reviewBtnTextActive: { color: '#8B5CF6', fontWeight: '700' },
-  clearBtn: { paddingHorizontal: 8, paddingVertical: 4 },
-  clearBtnText: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
-  scrollArea: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContent: { padding: 16 },
-  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  loadingText: { marginTop: 12, fontSize: 14, color: '#64748B' },
-  questionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 16,
+  sectionBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0D9488',
   },
-  qMetaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  diffBadge: {
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  questionText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    lineHeight: 24,
+    marginBottom: 20,
   },
-  diffText: { fontSize: 10, fontWeight: '700', color: '#2563EB' },
-  marksText: { fontSize: 12, fontWeight: '600', color: '#059669' },
-  questionText: { fontSize: 16, color: '#0F172A', lineHeight: 24, fontWeight: '500' },
-  optionsList: { gap: 10, marginBottom: 20 },
+  optionsList: {
+    gap: 12,
+  },
   optionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
+    borderRadius: 16,
+    padding: 14,
   },
-  optionCardSelected: { borderColor: '#2563EB', backgroundColor: '#EFF6FF' },
-  optionLabelCircle: {
+  optionCardSelected: {
+    borderColor: '#0D9488',
+    backgroundColor: '#F0FDFA',
+  },
+  optionCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
     backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
-  optionLabelCircleSelected: { backgroundColor: '#2563EB' },
-  optionLabelText: { fontSize: 14, fontWeight: '700', color: '#334155' },
-  optionLabelTextSelected: { color: '#FFFFFF' },
-  optionText: { fontSize: 14, color: '#334155', flex: 1, lineHeight: 20 },
-  optionTextSelected: { color: '#1E3A8A', fontWeight: '600' },
-  footer: {
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
+  optionCircleSelected: {
+    backgroundColor: '#0D9488',
+  },
+  optionLetter: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  optionLetterSelected: {
+    color: '#FFFFFF',
+  },
+  optionText: {
+    fontSize: 14,
+    color: '#334155',
+    flex: 1,
+    lineHeight: 20,
+  },
+  optionTextSelected: {
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+  bottomBar: {
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
-  },
-  navBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    gap: 4,
-  },
-  navBtnDisabled: { borderColor: '#E2E8F0', opacity: 0.5 },
-  navBtnText: { fontSize: 13, fontWeight: '600', color: '#334155' },
-  navBtnTextDisabled: { color: '#94A3B8' },
-  saveNextBtn: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
-  saveNextBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  submitTestBtn: {
-    backgroundColor: '#DC2626',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  submitTestBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  paletteContainer: {
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    width: '100%',
-    maxHeight: '80%',
-    padding: 18,
   },
-  paletteHeader: {
+  actionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  paletteTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  legendRow: {
+  actionBtn: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendLabel: { fontSize: 11, color: '#64748B' },
-  gridContainer: {
+  actionBtnText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  primaryNextBtn: {
+    backgroundColor: '#0D9488',
+    borderRadius: 24,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  primaryNextBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  submitModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  submitModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 16,
+  },
+  submitTable: {
+    marginBottom: 20,
+  },
+  submitTableRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  submitTableLabel: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  submitTableVal: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  submitTableDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  continueTestBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  continueTestBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  finalSubmitBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0D9488',
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
+  finalSubmitBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  paletteModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  paletteModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '75%',
+  },
+  paletteModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  paletteModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  paletteGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    justifyContent: 'flex-start',
-    paddingVertical: 10,
+    gap: 8,
+    paddingVertical: 4,
   },
-  paletteButton: {
-    width: 44,
-    height: 44,
+  paletteCell: {
+    width: 32,
+    height: 32,
     borderRadius: 8,
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  paletteButtonCurrent: {
-    borderWidth: 2,
-    borderColor: '#0F172A',
+  paletteCellText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
-  paletteButtonText: { fontSize: 14, fontWeight: '700' },
-  closePaletteBtn: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  closePaletteBtnText: { fontSize: 14, fontWeight: '600', color: '#334155' },
-  confirmModalCard: {
-    backgroundColor: '#FFFFFF',
+  paletteSubmitQuickBtn: {
+    backgroundColor: '#0D9488',
     borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    alignItems: 'center',
-  },
-  confirmTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginTop: 12 },
-  confirmDesc: { fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 18, marginTop: 6 },
-  confirmSummaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 12,
-    marginVertical: 16,
-  },
-  confirmStat: { alignItems: 'center' },
-  confirmStatNum: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  confirmStatLabel: { fontSize: 11, color: '#64748B', marginTop: 2 },
-  modalActionsRow: { flexDirection: 'row', gap: 12, width: '100%' },
-  cancelModalBtn: {
-    flex: 1,
     paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
     alignItems: 'center',
+    marginTop: 16,
   },
-  cancelModalBtnText: { color: '#334155', fontWeight: '600', fontSize: 14 },
-  confirmSubmitBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#2563EB',
-    alignItems: 'center',
+  paletteSubmitQuickText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  confirmSubmitBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 });

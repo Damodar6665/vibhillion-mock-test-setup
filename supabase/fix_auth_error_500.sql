@@ -67,3 +67,4 @@ select id, 'Administrator', email, 'admin'
 from auth.users
 where email = 'admin@vibhillion.ai'
 on conflict (id) do update set role = 'admin';
+
