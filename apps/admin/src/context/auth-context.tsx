@@ -39,15 +39,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [role, setRole] = useState<'admin' | 'student' | null>('admin');
   const [isLoading, setIsLoading] = useState(true);
 
+  const loginAsDemo = () => {
+    const demoAdmin = {
+      id: 'mock-admin-id',
+      email: 'admin@vibhillion.ai',
+      user_metadata: { full_name: 'Administrator' },
+    } as any;
+    try {
+      localStorage.setItem('vibhillion_admin_user', JSON.stringify(demoAdmin));
+    } catch (_) {}
+    setUser(demoAdmin);
+    setRole('admin');
+  };
+
   useEffect(() => {
+    // Check if we have an active local admin session
+    try {
+      const savedUser = localStorage.getItem('vibhillion_admin_user');
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
+        setRole('admin');
+        setIsLoading(false);
+        return;
+      }
+    } catch (_) {}
+
     if (!isSupabaseConfigured) {
-      // In local demo mode, default to authenticated admin for immediate inspection
-      setUser({
-        id: 'mock-admin-id',
-        email: 'admin@vibhillion.ai',
-        user_metadata: { full_name: 'Administrator' },
-      } as any);
-      setRole('admin');
+      loginAsDemo();
       setIsLoading(false);
       return;
     }
@@ -75,6 +94,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // If we already have a local admin session saved, keep it
+      const savedUser = localStorage.getItem('vibhillion_admin_user');
+      if (savedUser) {
+        setIsLoading(false);
+        return;
+      }
       setSession(session);
       setUser(session?.user ?? null);
       checkUserRole(session?.user ?? null).finally(() => setIsLoading(false));
@@ -83,6 +108,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      const savedUser = localStorage.getItem('vibhillion_admin_user');
+      if (savedUser) {
+        return;
+      }
       setSession(session);
       setUser(session?.user ?? null);
       checkUserRole(session?.user ?? null).finally(() => setIsLoading(false));
@@ -90,15 +119,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => subscription.unsubscribe();
   }, []);
-
-  const loginAsDemo = () => {
-    setUser({
-      id: 'mock-admin-id',
-      email: 'admin@vibhillion.ai',
-      user_metadata: { full_name: 'Administrator' },
-    } as any);
-    setRole('admin');
-  };
 
   const signIn = async (email: string, password: string) => {
     // If demo admin credentials or Supabase not configured, log in locally immediately
@@ -176,6 +196,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
+    try {
+      localStorage.removeItem('vibhillion_admin_user');
+    } catch (_) {}
     if (isSupabaseConfigured) {
       await supabase.auth.signOut();
     }
