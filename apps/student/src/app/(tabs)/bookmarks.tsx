@@ -72,3 +72,4 @@ const styles = StyleSheet.create({
   },
   exploreBtnText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
 });
+

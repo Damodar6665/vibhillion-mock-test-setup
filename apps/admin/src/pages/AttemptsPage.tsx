@@ -96,3 +96,4 @@ export const AttemptsPage: React.FC = () => {
     </div>
   );
 };
+

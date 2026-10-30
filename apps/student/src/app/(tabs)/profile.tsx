@@ -199,3 +199,4 @@ const styles = StyleSheet.create({
   },
   loginBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
+

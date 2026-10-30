@@ -73,3 +73,4 @@ export const ResultsPage: React.FC = () => {
     </div>
   );
 };
+

@@ -829,3 +829,4 @@ begin
   return jsonb_build_object('success', true, 'user_id', v_user_id, 'email', p_email);
 end;
 $$ language plpgsql security definer;
+

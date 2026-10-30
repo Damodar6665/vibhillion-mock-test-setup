@@ -40,3 +40,4 @@ Navigate to `http://localhost:5173` in your browser.
 
 ## 📖 Complete Documentation
 For detailed step-by-step instructions on Supabase database migrations, seed data import, admin bootstrap, and Android APK compilation, see [`docs/SETUP.md`](./docs/SETUP.md).
+

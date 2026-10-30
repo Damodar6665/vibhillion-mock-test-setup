@@ -111,3 +111,4 @@ const styles = StyleSheet.create({
   },
   actionBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
+

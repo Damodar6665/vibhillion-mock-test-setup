@@ -325,3 +325,4 @@ To generate a standalone APK or AAB for Google Play:
 - [ ] CORS allowed origins configured in Supabase under **Authentication** → **URL Configuration**.
 - [ ] Deep linking redirect `vibhillion://auth/callback` registered in Supabase.
 - [ ] All unit tests passing (`npm test` in `packages/shared`).
+

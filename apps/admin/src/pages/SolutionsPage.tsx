@@ -238,3 +238,4 @@ export const SolutionsPage: React.FC = () => {
     </div>
   );
 };
+

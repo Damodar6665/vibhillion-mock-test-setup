@@ -612,3 +612,4 @@ export const adminService = {
     return data as ExamAttempt[];
   },
 };
+

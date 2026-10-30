@@ -124,3 +124,4 @@ test('analyzeTopicPerformance: identifies weak and strong topics', () => {
   assert.ok(analysis.strongTopics.includes('Grammar'));
   assert.ok(analysis.recommendations.length > 0);
 });
+
