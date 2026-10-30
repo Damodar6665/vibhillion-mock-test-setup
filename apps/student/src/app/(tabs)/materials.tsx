@@ -33,3 +33,4 @@ const styles = StyleSheet.create({
   btn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0D9488', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24 },
   btnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 });
+

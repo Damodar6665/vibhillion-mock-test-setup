@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Platform,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -59,7 +60,11 @@ export default function TestInstructionsScreen() {
         {/* HERO ICON & TITLE */}
         <View style={styles.heroSection}>
           <View style={styles.iconCircle}>
-            <Ionicons name="document-text-outline" size={32} color="#0D9488" />
+            <Image
+              source={require('@/assets/images/emblems/hero_doc_icon.png')}
+              style={styles.heroDocImage}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.paperTitleText}>{paperTitle}</Text>
           <Text style={styles.categorySubText}>SSC</Text>
@@ -290,6 +295,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  heroDocImage: {
+    width: 44,
+    height: 44,
   },
   paperTitleText: {
     fontSize: 18,

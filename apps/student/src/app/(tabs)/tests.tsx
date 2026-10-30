@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   TextInput,
+  Image,
   Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -20,36 +21,22 @@ import { Ionicons } from '@expo/vector-icons';
 
 type SubView = 'categories' | 'subexams' | 'papers';
 
-// Official Emblem Badges matching Screenshot 1 & 2
+// Official Emblem Badges directly from the uploaded screenshots
 const CategoryEmblem: React.FC<{ type: 'upsc' | 'ssc' | 'appsc' | 'rrb' }> = ({ type }) => {
-  if (type === 'upsc') {
-    return (
-      <View style={[styles.emblemBase, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}>
-        <Ionicons name="ribbon" size={26} color="#B45309" />
-        <Text style={{ fontSize: 7, fontWeight: '800', color: '#B45309', marginTop: -2 }}>UPSC</Text>
-      </View>
-    );
-  }
-  if (type === 'ssc') {
-    return (
-      <View style={[styles.emblemBase, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
-        <Ionicons name="shield-checkmark" size={26} color="#DC2626" />
-        <Text style={{ fontSize: 7, fontWeight: '900', color: '#DC2626', marginTop: -2 }}>SSC</Text>
-      </View>
-    );
-  }
-  if (type === 'appsc') {
-    return (
-      <View style={[styles.emblemBase, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
-        <Ionicons name="leaf" size={26} color="#15803D" />
-        <Text style={{ fontSize: 7, fontWeight: '800', color: '#15803D', marginTop: -2 }}>APPSC</Text>
-      </View>
-    );
-  }
+  const sources = {
+    upsc: require('@/assets/images/emblems/upsc.png'),
+    ssc: require('@/assets/images/emblems/ssc.png'),
+    appsc: require('@/assets/images/emblems/appsc.png'),
+    rrb: require('@/assets/images/emblems/rrb.png'),
+  };
+
   return (
-    <View style={[styles.emblemBase, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
-      <Ionicons name="train" size={26} color="#B91C1C" />
-      <Text style={{ fontSize: 7, fontWeight: '800', color: '#B91C1C', marginTop: -2 }}>RRB</Text>
+    <View style={styles.emblemWrapper}>
+      <Image
+        source={sources[type]}
+        style={styles.emblemImage}
+        resizeMode="contain"
+      />
     </View>
   );
 };
