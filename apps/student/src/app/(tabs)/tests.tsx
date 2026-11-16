@@ -3,7 +3,7 @@
 // File: apps/student/src/app/(tabs)/tests.tsx
 // ==============================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,8 +18,18 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { examService } from '@/services/examService';
+import { UserAttemptHistory, Exam } from '@vibhillion/shared';
 
 type SubView = 'categories' | 'subexams' | 'papers';
+
+interface SearchItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  type: 'paper' | 'subexam' | 'category';
+  action: () => void;
+}
 
 // Official Emblem Badges directly from the uploaded screenshots
 const CategoryEmblem: React.FC<{ type: 'upsc' | 'ssc' | 'appsc' | 'rrb' }> = ({ type }) => {
@@ -45,6 +55,27 @@ export default function TestsScreen() {
   const router = useRouter();
   const [subView, setSubView] = useState<SubView>('categories');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [recentAttempts, setRecentAttempts] = useState<UserAttemptHistory[]>([]);
+  const [exam, setExam] = useState<Exam | null>(null);
+
+  // Load live attempts and exam configuration
+  const loadData = async () => {
+    try {
+      const [history, examDetails] = await Promise.all([
+        examService.getUserAttemptHistory(),
+        examService.getExamDetails('e0000001-0000-0000-0000-000000000001'),
+      ]);
+      setRecentAttempts(history);
+      setExam(examDetails);
+    } catch {
+      // Keep fallbacks
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   // Handle Paper Selection -> Navigate to Instructions screen
   const handleSelectPaper = (paperTitle: string) => {
@@ -57,6 +88,60 @@ export default function TestsScreen() {
       },
     });
   };
+
+  // Search items database for live searching
+  const searchItems: SearchItem[] = [
+    {
+      id: 'p1',
+      title: 'SSC CGL T-I (Held on 12 Sep 2025 S1) – English',
+      subtitle: `${Math.round((exam?.total_duration_seconds || 3600) / 60)} min ${exam?.total_questions || 100} Qs • Official Paper`,
+      type: 'paper',
+      action: () => handleSelectPaper('SSC CGL T-I (Held on 12 Sep 2025 S1) – English'),
+    },
+    {
+      id: 'p2',
+      title: 'SSC CGL Tier 1 2024 Set 1',
+      subtitle: 'Previous Year Mock Paper • Medium',
+      type: 'paper',
+      action: () => handleSelectPaper('SSC CGL Tier 1 2024 Set 1'),
+    },
+    {
+      id: 'p3',
+      title: 'SSC CGL T-I Similar Paper (Held on 12 Sep 2025 S2) – English',
+      subtitle: 'Shift 2 Practice Exam • Tier 1',
+      type: 'paper',
+      action: () => handleSelectPaper('SSC CGL T-I Similar Paper (Held on 12 Sep 2025 S2) – English'),
+    },
+    {
+      id: 's1',
+      title: 'SSC CGL Previous Year Papers',
+      subtitle: '20 mock tests • Tier 1 Shift Papers',
+      type: 'subexam',
+      action: () => {
+        setSubView('papers');
+        setSearchQuery('');
+      },
+    },
+    {
+      id: 'c1',
+      title: 'SSC (Staff Selection Commission)',
+      subtitle: '39 exam blocks • Competitive Exams',
+      type: 'category',
+      action: () => {
+        setSubView('subexams');
+        setSearchQuery('');
+      },
+    },
+  ];
+
+  const filteredSearchItems =
+    searchQuery.trim().length > 0
+      ? searchItems.filter(
+          (item) =>
+            item.title.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
+            item.subtitle.toLowerCase().includes(searchQuery.toLowerCase().trim())
+        )
+      : [];
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -73,17 +158,110 @@ export default function TestsScreen() {
           <Text style={styles.screenSubtitle}>Practice with full-length exam simulations</Text>
         </View>
 
-        {/* SEARCH BAR */}
-        <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={20} color="#94A3B8" style={{ marginRight: 8 }} />
+        {/* SEARCH BAR (WITH HOVER & FOCUS EFFECT) */}
+        <View style={[styles.searchBar, isSearchFocused && styles.searchBarFocused]}>
+          <Ionicons
+            name="search-outline"
+            size={20}
+            color={isSearchFocused ? '#0D9488' : '#94A3B8'}
+            style={{ marginRight: 8 }}
+          />
           <TextInput
             placeholder="Search exams..."
             placeholderTextColor="#94A3B8"
             value={searchQuery}
             onChangeText={setSearchQuery}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
             style={styles.searchInput}
+            returnKeyType="search"
+            onSubmitEditing={() => {
+              if (filteredSearchItems.length > 0) {
+                filteredSearchItems[0].action();
+                setSearchQuery('');
+              }
+            }}
           />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* SEARCH RESULTS DROPDOWN */}
+        {searchQuery.trim().length > 0 && (
+          <View style={styles.searchResultsBox}>
+            <View style={styles.searchHeaderRow}>
+              <Text style={styles.searchResultsHeader}>Search Results</Text>
+              <Text style={styles.searchResultCount}>
+                {filteredSearchItems.length} match{filteredSearchItems.length === 1 ? '' : 'es'}
+              </Text>
+            </View>
+            {filteredSearchItems.length === 0 ? (
+              <View style={styles.searchEmptyBox}>
+                <Ionicons name="search-outline" size={24} color="#CBD5E1" />
+                <Text style={styles.searchEmptyText}>No exams found matching "{searchQuery}"</Text>
+              </View>
+            ) : (
+              filteredSearchItems.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.searchResultItem}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    item.action();
+                    setSearchQuery('');
+                  }}
+                >
+                  <View style={styles.searchResultIconBox}>
+                    <Ionicons
+                      name={
+                        item.type === 'paper'
+                          ? 'document-text-outline'
+                          : item.type === 'subexam'
+                          ? 'albums-outline'
+                          : 'school-outline'
+                      }
+                      size={18}
+                      color="#0D9488"
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.searchResultTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.searchResultSubtitle}>{item.subtitle}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.searchTypePill,
+                      item.type === 'paper'
+                        ? styles.typePaper
+                        : item.type === 'subexam'
+                        ? styles.typeSubexam
+                        : styles.typeCategory,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.searchTypePillText,
+                        item.type === 'paper'
+                          ? styles.textPaper
+                          : item.type === 'subexam'
+                          ? styles.textSubexam
+                          : styles.textCategory,
+                      ]}
+                    >
+                      {item.type === 'paper' ? 'Paper' : item.type === 'subexam' ? 'Sub-exam' : 'Category'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#94A3B8" style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        )}
 
         {/* COMPETITIVE EXAMS HEADER */}
         <View style={styles.sectionHeaderRow}>
@@ -91,78 +269,71 @@ export default function TestsScreen() {
             <Ionicons name="book-outline" size={18} color="#0D9488" style={{ marginRight: 6 }} />
             <Text style={styles.sectionTitle}>Competitive Exams</Text>
           </View>
-          <Text style={styles.sectionBadgeText}>4 Categories  |  89+ Topics</Text>
+          <Text style={styles.sectionBadgeText}>1 Category  |  39 Topics</Text>
         </View>
 
-        {/* RECENT TESTS HORIZONTAL LIST */}
+        {/* RECENT TESTS HORIZONTAL LIST (ONLY SHOWS REAL ATTEMPTED EXAMS) */}
         <View style={styles.recentSection}>
           <View style={styles.recentHeaderRow}>
             <Ionicons name="trophy-outline" size={17} color="#EA580C" style={{ marginRight: 6 }} />
             <Text style={styles.recentTitle}>Recent Tests</Text>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.recentScrollContent}
-          >
-            {/* Card 1 */}
-            <TouchableOpacity
-              style={styles.recentCard}
-              activeOpacity={0.8}
-              onPress={() => handleSelectPaper('SSC CGL T-I (Held on 12 Sep 2025 S1) – English')}
+          {recentAttempts.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recentScrollContent}
             >
-              <Text style={styles.recentCardTitle} numberOfLines={1}>SSC CGL T-I (H...</Text>
-              <Text style={styles.recentCardDate}>29 Oct</Text>
-              <Text style={styles.recentCardScore}>0%</Text>
-              <Text style={styles.recentCardFraction}>0/100</Text>
-            </TouchableOpacity>
+              {recentAttempts.map((attempt) => {
+                const dateStr = attempt.submitted_at
+                  ? new Date(attempt.submitted_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+                  : 'Recent';
+                const scorePct = Math.round(
+                  attempt.accuracy_percentage ??
+                    (attempt.maximum_score ? (attempt.score / attempt.maximum_score) * 100 : 0)
+                );
+                const isPassing = scorePct >= 50;
 
-            {/* Card 2 */}
-            <TouchableOpacity
-              style={styles.recentCard}
-              activeOpacity={0.8}
-              onPress={() => handleSelectPaper('UPSC 2015 Paper 1')}
-            >
-              <Text style={styles.recentCardTitle} numberOfLines={1}>UPSC 2015 Pap...</Text>
-              <Text style={styles.recentCardDate}>29 Oct</Text>
-              <Text style={styles.recentCardScore}>2%</Text>
-              <Text style={styles.recentCardFraction}>5/100</Text>
-            </TouchableOpacity>
-
-            {/* Card 3 */}
-            <TouchableOpacity
-              style={styles.recentCard}
-              activeOpacity={0.8}
-              onPress={() => handleSelectPaper('UPSC 2015 Paper 2')}
-            >
-              <Text style={styles.recentCardTitle} numberOfLines={1}>UPSC 2015 Pap...</Text>
-              <Text style={styles.recentCardDate}>21 Oct</Text>
-              <Text style={styles.recentCardScore}>0%</Text>
-              <Text style={styles.recentCardFraction}>1/100</Text>
-            </TouchableOpacity>
-          </ScrollView>
+                return (
+                  <TouchableOpacity
+                    key={attempt.id}
+                    style={styles.recentCard}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      handleSelectPaper(attempt.exam_title || 'SSC CGL T-I (Held on 12 Sep 2025 S1) – English')
+                    }
+                  >
+                    <Text style={styles.recentCardTitle} numberOfLines={1}>
+                      {attempt.exam_title?.slice(0, 14) || 'SSC CGL T-I'}...
+                    </Text>
+                    <Text style={styles.recentCardDate}>{dateStr}</Text>
+                    <Text style={[styles.recentCardScore, { color: isPassing ? '#059669' : '#EF4444' }]}>
+                      {scorePct}%
+                    </Text>
+                    <Text style={styles.recentCardFraction}>
+                      {Math.round(attempt.score)}/{Math.round(attempt.maximum_score || 200)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyRecentCard}>
+              <Ionicons name="time-outline" size={20} color="#0D9488" style={{ marginRight: 8 }} />
+              <Text style={styles.emptyRecentText}>
+                No tests attempted yet. Attempt your first mock test below!
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* ========================================================================= */}
-        {/* VIEW 1: CATEGORIES GRID (SCREENSHOT 1) */}
+        {/* VIEW 1: CATEGORIES (ONLY SSC AS REQUESTED) */}
         {/* ========================================================================= */}
         {subView === 'categories' && (
           <View style={styles.gridContainer}>
-            {/* UPSC */}
-            <TouchableOpacity
-              style={styles.gridCard}
-              activeOpacity={0.85}
-              onPress={() => setSubView('subexams')}
-            >
-              <CategoryEmblem type="upsc" />
-              <View style={styles.gridCardText}>
-                <Text style={styles.gridCardTitle}>UPSC</Text>
-                <Text style={styles.gridCardSub}>1 exam blocks</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* SSC (Main Target Flow) */}
+            {/* SSC Category Card */}
             <TouchableOpacity
               style={styles.gridCard}
               activeOpacity={0.85}
@@ -173,38 +344,13 @@ export default function TestsScreen() {
                 <Text style={styles.gridCardTitle}>SSC</Text>
                 <Text style={styles.gridCardSub}>39 exam blocks</Text>
               </View>
-            </TouchableOpacity>
-
-            {/* APPSC */}
-            <TouchableOpacity
-              style={styles.gridCard}
-              activeOpacity={0.85}
-              onPress={() => setSubView('subexams')}
-            >
-              <CategoryEmblem type="appsc" />
-              <View style={styles.gridCardText}>
-                <Text style={styles.gridCardTitle}>APPSC</Text>
-                <Text style={styles.gridCardSub}>37 exam blocks</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* RRB */}
-            <TouchableOpacity
-              style={styles.gridCard}
-              activeOpacity={0.85}
-              onPress={() => setSubView('subexams')}
-            >
-              <CategoryEmblem type="rrb" />
-              <View style={styles.gridCardText}>
-                <Text style={styles.gridCardTitle}>RRB</Text>
-                <Text style={styles.gridCardSub}>12 exam blocks</Text>
-              </View>
+              <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
             </TouchableOpacity>
           </View>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 2: SUB-EXAM LIST FOR SSC (SCREENSHOT 2) */}
+        {/* VIEW 2: SUB-EXAM LIST FOR SSC (ONLY SSC CGL PREVIOUS YEAR PAPERS) */}
         {/* ========================================================================= */}
         {subView === 'subexams' && (
           <View style={styles.subFlowContainer}>
@@ -228,41 +374,19 @@ export default function TestsScreen() {
             {/* Sub-exam title */}
             <Text style={styles.chooseSubTitle}>Choose a sub-exam</Text>
 
-            {/* Sub-exam cards */}
+            {/* Only SSC CGL Previous Year Papers remains */}
             <TouchableOpacity
               style={styles.subExamCard}
               activeOpacity={0.8}
               onPress={() => setSubView('papers')}
             >
-              <Text style={styles.subExamTitle}>SSC CGL Previous Year Papers</Text>
-              <Text style={styles.subExamCount}>20 mock tests</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.subExamCard}
-              activeOpacity={0.8}
-              onPress={() => setSubView('papers')}
-            >
-              <Text style={styles.subExamTitle}>SSC CGL Mock Tests</Text>
-              <Text style={styles.subExamCount}>3 mock tests</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.subExamCard}
-              activeOpacity={0.8}
-              onPress={() => setSubView('papers')}
-            >
-              <Text style={styles.subExamTitle}>SSC CHSL Previous Year Papers</Text>
-              <Text style={styles.subExamCount}>10 mock tests</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.subExamCard}
-              activeOpacity={0.8}
-              onPress={() => setSubView('papers')}
-            >
-              <Text style={styles.subExamTitle}>SSC MTS Previous Year Papers</Text>
-              <Text style={styles.subExamCount}>6 mock tests</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View>
+                  <Text style={styles.subExamTitle}>SSC CGL Previous Year Papers</Text>
+                  <Text style={styles.subExamCount}>20 mock tests</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -291,7 +415,7 @@ export default function TestsScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Papers list */}
+            {/* Papers list - Only Paper 1 remains */}
             {/* Paper 1: SSC CGL T-I (Held on 12 Sep 2025 S1) – English */}
             <TouchableOpacity
               style={styles.paperCard}
@@ -299,7 +423,11 @@ export default function TestsScreen() {
               onPress={() => handleSelectPaper('SSC CGL T-I (Held on 12 Sep 2025 S1) – English')}
             >
               <View style={styles.paperIconBox}>
-                <Ionicons name="document-text-outline" size={24} color="#0D9488" />
+                <Image
+                  source={require('@/assets/images/emblems/paper_icon.png')}
+                  style={styles.paperIconImage}
+                  resizeMode="contain"
+                />
               </View>
               <View style={styles.paperInfo}>
                 <Text style={styles.paperTitle}>
@@ -309,69 +437,9 @@ export default function TestsScreen() {
                   <View style={styles.mediumBadge}>
                     <Text style={styles.mediumBadgeText}>Medium</Text>
                   </View>
-                  <Text style={styles.paperDetailsText}>60 min 100 Qs</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            {/* Paper 2 */}
-            <TouchableOpacity
-              style={styles.paperCard}
-              activeOpacity={0.85}
-              onPress={() => handleSelectPaper('SSC CGL T-I Similar Paper (Held on 12 Sep 2025 S2) – English')}
-            >
-              <View style={styles.paperIconBox}>
-                <Ionicons name="document-text-outline" size={24} color="#0D9488" />
-              </View>
-              <View style={styles.paperInfo}>
-                <Text style={styles.paperTitle}>
-                  SSC CGL T-I Similar Paper (Held on 12 Sep 2025 S2) – English
-                </Text>
-                <View style={styles.paperMetaRow}>
-                  <View style={styles.mediumBadge}>
-                    <Text style={styles.mediumBadgeText}>Medium</Text>
-                  </View>
-                  <Text style={styles.paperDetailsText}>60 min 100 Qs</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            {/* Paper 3 */}
-            <TouchableOpacity
-              style={styles.paperCard}
-              activeOpacity={0.85}
-              onPress={() => handleSelectPaper('SSC CGL Tier 1 2024 Set 1')}
-            >
-              <View style={styles.paperIconBox}>
-                <Ionicons name="document-text-outline" size={24} color="#0D9488" />
-              </View>
-              <View style={styles.paperInfo}>
-                <Text style={styles.paperTitle}>SSC CGL Tier 1 2024 Set 1</Text>
-                <View style={styles.paperMetaRow}>
-                  <View style={styles.mediumBadge}>
-                    <Text style={styles.mediumBadgeText}>Medium</Text>
-                  </View>
-                  <Text style={styles.paperDetailsText}>60 min 100 Qs</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            {/* Paper 4 */}
-            <TouchableOpacity
-              style={styles.paperCard}
-              activeOpacity={0.85}
-              onPress={() => handleSelectPaper('SSC CGL Tier 1 2024 Set 2')}
-            >
-              <View style={styles.paperIconBox}>
-                <Ionicons name="document-text-outline" size={24} color="#0D9488" />
-              </View>
-              <View style={styles.paperInfo}>
-                <Text style={styles.paperTitle}>SSC CGL Tier 1 2024 Set 2</Text>
-                <View style={styles.paperMetaRow}>
-                  <View style={styles.mediumBadge}>
-                    <Text style={styles.mediumBadgeText}>Medium</Text>
-                  </View>
-                  <Text style={styles.paperDetailsText}>60 min 99 Qs</Text>
+                  <Text style={styles.paperDetailsText}>
+                    {Math.round((exam?.total_duration_seconds || 3600) / 60)} min {exam?.total_questions || 100} Qs
+                  </Text>
                 </View>
               </View>
             </TouchableOpacity>
@@ -415,17 +483,126 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
     borderRadius: 14,
     paddingHorizontal: 14,
-    height: 46,
+    height: 48,
     marginBottom: 20,
+  },
+  searchBarFocused: {
+    borderColor: '#0D9488',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0D9488',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
     color: '#0F172A',
+    outlineStyle: 'none' as any,
+  },
+  searchResultsBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    padding: 12,
+    marginBottom: 20,
+    marginTop: -10,
+    shadowColor: '#0F766E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  searchHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  searchResultsHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0D9488',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  searchResultCount: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  searchResultIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#F0FDFA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  searchResultTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  searchResultSubtitle: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  searchTypePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  searchTypePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  typePaper: {
+    backgroundColor: '#F0FDFA',
+  },
+  textPaper: {
+    color: '#0D9488',
+  },
+  typeSubexam: {
+    backgroundColor: '#EEF2FF',
+  },
+  textSubexam: {
+    color: '#4F46E5',
+  },
+  typeCategory: {
+    backgroundColor: '#FFF7ED',
+  },
+  textCategory: {
+    color: '#EA580C',
+  },
+  searchEmptyBox: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchEmptyText: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 6,
+    textAlign: 'center',
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -499,28 +676,33 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontWeight: '500',
   },
-  emblemBase: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    justifyContent: 'center',
+  emptyRecentCard: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    padding: 14,
+  },
+  emptyRecentText: {
+    fontSize: 12,
+    color: '#64748B',
+    flex: 1,
+    lineHeight: 18,
   },
   gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 12,
   },
   gridCard: {
-    width: '48%',
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 16,
-    padding: 12,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
@@ -661,5 +843,20 @@ const styles = StyleSheet.create({
   paperDetailsText: {
     fontSize: 12,
     color: '#64748B',
+  },
+  emblemWrapper: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emblemImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+  },
+  paperIconImage: {
+    width: 28,
+    height: 28,
   },
 });

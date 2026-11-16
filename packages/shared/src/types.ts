@@ -76,6 +76,7 @@ export interface QuestionOption {
   option_label: string; // 'A', 'B', 'C', 'D'
   option_text: string;
   display_order: number;
+  image_url?: string | null;
 }
 
 export interface Question {
@@ -94,6 +95,8 @@ export interface Question {
   source_year?: number | null;
   source_session?: string | null;
   options?: QuestionOption[];
+  image_url?: string | null;
+  topic_analysis?: TopicOnlineAnalysis;
   created_at: string;
   updated_at: string;
 }
@@ -170,6 +173,23 @@ export interface ExamParticipation {
   completed_at: string;
 }
 
+export interface TopicOnlineAnalysis {
+  topic: string;
+  subtopic?: string;
+  section_name?: string;
+  concept_summary: string;
+  core_rule: string;
+  online_reference_title: string;
+  online_reference_url: string;
+  target_pacing_seconds: number;
+  exam_weightage: string;
+  difficulty_tier?: string;
+  recommended_resources?: {
+    title: string;
+    url: string;
+  }[];
+}
+
 export interface QuestionAnalysis {
   question_id: string;
   question_number: number;
@@ -186,6 +206,7 @@ export interface QuestionAnalysis {
     label: string;
     text: string;
     display_order: number;
+    image_url?: string | null;
   }[];
   user_selected_option_id?: string | null;
   correct_option_id: string;
@@ -195,6 +216,8 @@ export interface QuestionAnalysis {
   explanation?: string | null;
   solution_steps?: string[] | null;
   recommendation?: string;
+  image_url?: string | null;
+  topic_analysis?: TopicOnlineAnalysis;
 }
 
 export interface TopicPerformance {

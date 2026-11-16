@@ -1,5 +1,5 @@
 // ==============================================================================
-// VIBHILLION ADMIN: QUESTION MANAGEMENT & CSV IMPORT
+// VIBHILLION ADMIN: QUESTION MANAGEMENT, BULK JSON UPLOAD & IMAGE HANDLING
 // File: apps/admin/src/pages/QuestionsPage.tsx
 // ==============================================================================
 
@@ -7,11 +7,17 @@ import React, { useEffect, useState } from 'react';
 import {
   Plus,
   Trash2,
+  Edit2,
   HelpCircle,
   Download,
   Upload,
   CheckCircle2,
+  FileCode,
+  Image as ImageIcon,
+  X,
   FileSpreadsheet,
+  AlertCircle,
+  Layers,
 } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import { ExamSection } from '@vibhillion/shared';
@@ -21,22 +27,33 @@ export const QuestionsPage: React.FC = () => {
   const [selectedSectionId, setSelectedSectionId] = useState<string>('');
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState<any | null>(null);
 
   // Form states
   const [questionNumber, setQuestionNumber] = useState(1);
   const [questionText, setQuestionText] = useState('');
+  const [questionImage, setQuestionImage] = useState('');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [topic, setTopic] = useState('Grammar');
   const [subtopic, setSubtopic] = useState('');
   const [marks, setMarks] = useState(2.0);
   const [negativeMarks, setNegativeMarks] = useState(0.5);
   const [explanation, setExplanation] = useState('');
-  const [options, setOptions] = useState(['', '', '', '']);
+  
+  // 4 Options: text and optional image
+  const [options, setOptions] = useState<string[]>(['', '', '', '']);
+  const [optionImages, setOptionImages] = useState<string[]>(['', '', '', '']);
   const [correctIndex, setCorrectIndex] = useState(0);
 
-  // CSV State
+  // Bulk JSON State
+  const [jsonContent, setJsonContent] = useState('');
+  const [jsonReplace, setJsonReplace] = useState(false);
+  const [isUploadingJson, setIsUploadingJson] = useState(false);
   const [csvContent, setCsvContent] = useState('');
 
   const loadData = async () => {
@@ -70,15 +87,41 @@ export const QuestionsPage: React.FC = () => {
     loadQuestions(secId);
   };
 
-  const handleOptionChange = (index: number, value: string) => {
+  const handleOptionTextChange = (index: number, value: string) => {
     const next = [...options];
     next[index] = value;
     setOptions(next);
   };
 
+  const handleOptionImageChange = (index: number, value: string) => {
+    const next = [...optionImages];
+    next[index] = value;
+    setOptionImages(next);
+  };
+
+  const handleFileUploadAsBase64 = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    callback: (base64: string) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Image file size exceeds 2MB limit. Please choose a smaller image.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        callback(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const openCreateModal = () => {
+    setEditingQuestion(null);
     setQuestionNumber(questions.length + 1);
     setQuestionText('');
+    setQuestionImage('');
     setDifficulty('medium');
     setTopic('Grammar');
     setSubtopic('');
@@ -86,33 +129,82 @@ export const QuestionsPage: React.FC = () => {
     setNegativeMarks(0.5);
     setExplanation('');
     setOptions(['', '', '', '']);
+    setOptionImages(['', '', '', '']);
     setCorrectIndex(0);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (q: any) => {
+    setEditingQuestion(q);
+    setQuestionNumber(q.question_number);
+    setQuestionText(q.question_text);
+    setQuestionImage(q.image_url || '');
+    setDifficulty(q.difficulty || 'medium');
+    setTopic(q.topic || 'General');
+    setSubtopic(q.subtopic || '');
+    setMarks(Number(q.marks) || 2.0);
+    setNegativeMarks(Number(q.negative_marks) || 0.5);
+    setExplanation(q.explanation || q.answer_explanation || '');
+
+    const optTexts = (q.options || []).map((o: any) => o.option_text);
+    const optImgs = (q.options || []).map((o: any) => o.image_url || '');
+    while (optTexts.length < 4) optTexts.push('');
+    while (optImgs.length < 4) optImgs.push('');
+
+    setOptions(optTexts);
+    setOptionImages(optImgs);
+    const correctIdx = (q.options || []).findIndex((o: any) => o.id === q.correct_option_id);
+    setCorrectIndex(correctIdx >= 0 ? correctIdx : 0);
     setIsModalOpen(true);
   };
 
   const handleSaveQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!questionText || options.some((o) => !o.trim())) {
-      alert('Please enter question text and all four options.');
+    if (!questionText.trim() || options.some((o) => !o.trim())) {
+      alert('Please enter the question text and all four options.');
       return;
     }
 
-    await adminService.createQuestion({
-      section_id: selectedSectionId,
-      question_number: Number(questionNumber),
-      question_text: questionText,
-      difficulty,
-      topic,
-      subtopic,
-      marks: Number(marks),
-      negative_marks: Number(negativeMarks),
-      explanation,
-      solution_steps: [explanation],
-      options,
-      correctOptionIndex: correctIndex,
-    });
+    const formattedOptions = options.map((txt, i) => ({
+      option_text: txt,
+      image_url: optionImages[i]?.trim() || null,
+    }));
+
+    if (editingQuestion) {
+      await adminService.updateQuestion(editingQuestion.id, {
+        question_number: Number(questionNumber),
+        question_text: questionText,
+        difficulty,
+        topic,
+        subtopic,
+        marks: Number(marks),
+        negative_marks: Number(negativeMarks),
+        explanation,
+        solution_steps: [explanation],
+        options: formattedOptions,
+        correctOptionIndex: correctIndex,
+        image_url: questionImage?.trim() || null,
+      });
+    } else {
+      await adminService.createQuestion({
+        section_id: selectedSectionId,
+        question_number: Number(questionNumber),
+        question_text: questionText,
+        difficulty,
+        topic,
+        subtopic,
+        marks: Number(marks),
+        negative_marks: Number(negativeMarks),
+        explanation,
+        solution_steps: [explanation],
+        options: formattedOptions,
+        correctOptionIndex: correctIndex,
+        image_url: questionImage?.trim() || null,
+      });
+    }
 
     setIsModalOpen(false);
+    setEditingQuestion(null);
     loadQuestions(selectedSectionId);
   };
 
@@ -123,59 +215,108 @@ export const QuestionsPage: React.FC = () => {
     }
   };
 
-  // CSV Template generation
-  const downloadTemplate = () => {
-    const csvHeader = 'question_number,question_text,option_A,option_B,option_C,option_D,correct_option,difficulty,topic,subtopic,marks,negative_marks,explanation\n';
-    const sampleRow = '1,"Select the synonym of METICULOUS","Painstaking","Careless","Hasty","Casual","A","easy","Vocabulary","Synonyms",2.0,0.5,"Meticulous means careful"\n';
-    const blob = new Blob([csvHeader + sampleRow], { type: 'text/csv;charset=utf-8;' });
+  // --------------------------------------------------------------------------
+  // BULK JSON UPLOAD
+  // --------------------------------------------------------------------------
+  const downloadJsonTemplate = () => {
+    const samplePayload = {
+      replace: false,
+      questions: [
+        {
+          question_number: 1,
+          section_name: 'English Comprehension',
+          question_text: 'Select the synonym of the word METICULOUS:',
+          image_url: null,
+          difficulty: 'easy',
+          topic: 'Vocabulary',
+          subtopic: 'Synonyms',
+          marks: 2.0,
+          negative_marks: 0.5,
+          explanation: 'Meticulous means taking or showing extreme care about minute details; painstaking.',
+          options: [
+            { option_label: 'A', option_text: 'Painstaking', image_url: null },
+            { option_label: 'B', option_text: 'Careless', image_url: null },
+            { option_label: 'C', option_text: 'Hasty', image_url: null },
+            { option_label: 'D', option_text: 'Casual', image_url: null },
+          ],
+          correct_option_label: 'A',
+        },
+        {
+          question_number: 2,
+          section_name: 'General Intelligence & Reasoning',
+          question_text: 'Which figure replaces the question mark in the sequence below?',
+          image_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400',
+          difficulty: 'medium',
+          topic: 'Reasoning',
+          subtopic: 'Pattern Completion',
+          marks: 2.0,
+          negative_marks: 0.5,
+          explanation: 'The pattern rotates clockwise 45 degrees at each step.',
+          options: [
+            { option_label: 'A', option_text: 'Figure 1', image_url: null },
+            { option_label: 'B', option_text: 'Figure 2', image_url: null },
+            { option_label: 'C', option_text: 'Figure 3', image_url: null },
+            { option_label: 'D', option_text: 'Figure 4', image_url: null },
+          ],
+          correct_option_label: 'B',
+        },
+      ],
+    };
+
+    const blob = new Blob([JSON.stringify(samplePayload, null, 2)], {
+      type: 'application/json;charset=utf-8;',
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'vibhillion_questions_template.csv');
+    link.href = url;
+    link.download = 'vibhillion_questions_bulk_template.json';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleCsvImport = async () => {
-    if (!csvContent.trim()) {
-      alert('Please paste CSV content');
+  const handleJsonFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setJsonContent(reader.result as string);
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const handleExecuteJsonBulkUpload = async () => {
+    if (!jsonContent.trim()) {
+      alert('Please select a JSON file or paste valid JSON content.');
       return;
     }
 
-    const lines = csvContent.split('\n').filter((l) => l.trim().length > 0);
-    let imported = 0;
+    try {
+      setIsUploadingJson(true);
+      const parsed = JSON.parse(jsonContent);
+      const questionsList = Array.isArray(parsed) ? parsed : (parsed.questions || []);
 
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(',').map((p) => p.replace(/^"|"$/g, '').trim());
-      if (parts.length >= 7) {
-        const correctOpt = parts[6].toUpperCase();
-        let cIdx = 0;
-        if (correctOpt === 'B') cIdx = 1;
-        else if (correctOpt === 'C') cIdx = 2;
-        else if (correctOpt === 'D') cIdx = 3;
-
-        await adminService.createQuestion({
-          section_id: selectedSectionId,
-          question_number: Number(parts[0]) || questions.length + imported + 1,
-          question_text: parts[1],
-          difficulty: (parts[7] as any) || 'medium',
-          topic: parts[8] || 'General',
-          subtopic: parts[9] || '',
-          marks: Number(parts[10]) || 2.0,
-          negative_marks: Number(parts[11]) || 0.5,
-          explanation: parts[12] || '',
-          options: [parts[2], parts[3], parts[4], parts[5]],
-          correctOptionIndex: cIdx,
-        });
-        imported++;
+      if (!Array.isArray(questionsList) || questionsList.length === 0) {
+        alert('Invalid JSON: Must contain an array of questions or { "questions": [...] }.');
+        setIsUploadingJson(false);
+        return;
       }
-    }
 
-    setIsCsvModalOpen(false);
-    setCsvContent('');
-    loadQuestions(selectedSectionId);
-    alert(`Successfully imported ${imported} questions!`);
+      const res = await adminService.bulkUploadQuestions({
+        questions: questionsList,
+        replace: jsonReplace,
+      });
+
+      setIsUploadingJson(false);
+      setIsJsonModalOpen(false);
+      setJsonContent('');
+      await loadData();
+      alert(`Bulk Upload Success! Successfully imported ${res.uploaded_count} questions. Total questions in bank: ${res.total_questions}. Synced live across frontend and backend.`);
+    } catch (err: any) {
+      setIsUploadingJson(false);
+      alert(`JSON Upload Error: ${err.message}`);
+    }
   };
 
   return (
@@ -183,17 +324,29 @@ export const QuestionsPage: React.FC = () => {
       <div className="page-header">
         <div>
           <h1 className="page-title">Question Management</h1>
-          <p className="page-subtitle">Author questions, configure 4 options, protect answers, and import via CSV</p>
+          <p className="page-subtitle">
+            Author questions, upload/delete images on questions & options, and perform bulk JSON imports syncing live with frontend
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button className="btn btn-secondary" onClick={downloadTemplate} title="Download CSV format template">
-            <Download size={16} />
-            <span>CSV Template</span>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            className="btn btn-secondary"
+            onClick={downloadJsonTemplate}
+            title="Download JSON format sample"
+          >
+            <FileCode size={16} />
+            <span>JSON Template</span>
           </button>
-          <button className="btn btn-secondary" onClick={() => setIsCsvModalOpen(true)}>
+
+          <button
+            className="btn btn-secondary bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+            onClick={() => setIsJsonModalOpen(true)}
+            title="Bulk Upload Questions via JSON"
+          >
             <Upload size={16} />
-            <span>Import CSV</span>
+            <span>Bulk Upload JSON</span>
           </button>
+
           <button className="btn btn-primary" onClick={openCreateModal}>
             <Plus size={16} />
             <span>Add Question</span>
@@ -202,7 +355,7 @@ export const QuestionsPage: React.FC = () => {
       </div>
 
       {/* Section Filter Bar */}
-      <div className="content-card p-4 mb-4 flex items-center justify-between">
+      <div className="content-card p-4 mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <label className="text-sm font-bold text-slate-700">Filter By Section:</label>
           <select
@@ -211,103 +364,253 @@ export const QuestionsPage: React.FC = () => {
             onChange={handleSelectSection}
           >
             {sections.map((sec) => (
-              <option key={sec.id} value={sec.id}>{sec.name}</option>
+              <option key={sec.id} value={sec.id}>
+                {sec.name} ({sec.question_count} Qs)
+              </option>
             ))}
           </select>
         </div>
-        <div className="text-sm font-semibold text-slate-600">
-          Showing {questions.length} questions in section
+
+        <div className="text-xs text-slate-500 font-semibold">
+          Section Questions: <strong>{questions.length}</strong> | Image-enabled: <strong>{questions.filter(q => q.image_url || q.options?.some((o: any) => o.image_url)).length}</strong>
         </div>
       </div>
 
-      {/* Questions List */}
-      <div className="space-y-4">
+      {/* Questions Data List */}
+      <div className="content-card">
         {loading ? (
-          <div className="content-card p-6 text-center text-slate-500">Loading questions...</div>
+          <div className="p-8 text-center text-slate-500">Loading section questions...</div>
         ) : questions.length === 0 ? (
-          <div className="content-card p-8 text-center text-slate-500">
-            <HelpCircle size={36} className="mx-auto text-slate-300 mb-2" />
-            <p className="font-semibold text-slate-700">No questions added to this section yet.</p>
-            <p className="text-xs text-slate-400 mt-1">Click "Add Question" or "Import CSV" to upload questions.</p>
+          <div className="p-12 text-center text-slate-500">
+            <HelpCircle size={40} className="mx-auto mb-2 text-slate-400" />
+            <h3 className="text-sm font-bold text-slate-700">No questions in this section</h3>
+            <p className="text-xs text-slate-500 mt-1">Use "Add Question" or "Bulk Upload JSON" to populate this section.</p>
           </div>
         ) : (
-          questions.map((q) => (
-            <div key={q.id} className="content-card p-5">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex items-center gap-3">
-                  <span className="order-circle bg-blue-100 text-blue-700 font-bold">
-                    Q{q.question_number}
-                  </span>
-                  <div>
-                    <span className="badge badge-info">{q.topic}</span>
-                    {q.subtopic && <span className="text-xs text-slate-500 ml-2">• {q.subtopic}</span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="badge badge-success">+{q.marks} / −{q.negative_marks}</span>
-                  <button
-                    className="btn-icon text-red-600 hover:bg-red-50"
-                    onClick={() => handleDelete(q.id)}
-                    title="Delete Question"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '60px' }}>Q#</th>
+                  <th>Question & Visuals</th>
+                  <th>Topic & Difficulty</th>
+                  <th>Options & Correct Key</th>
+                  <th>Marks</th>
+                  <th style={{ width: '100px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {questions.map((q) => {
+                  const hasImage = Boolean(q.image_url);
+                  const hasOptionImages = q.options?.some((o: any) => Boolean(o.image_url));
 
-              <p className="text-slate-800 font-medium text-base mb-4 leading-relaxed">
-                {q.question_text}
-              </p>
-
-              {/* 4 Options Grid */}
-              <div className="grid-2-cols gap-2 mb-3">
-                {q.options?.map((opt: any) => {
-                  const isCorrect = opt.id === q.correct_option_id;
                   return (
-                    <div
-                      key={opt.id}
-                      className={`p-3 rounded-lg border text-sm flex items-center justify-between ${
-                        isCorrect
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-semibold'
-                          : 'border-slate-200 bg-white text-slate-700'
-                      }`}
-                    >
-                      <span>
-                        <strong className="mr-2">{opt.option_label}.</strong> {opt.option_text}
-                      </span>
-                      {isCorrect && (
-                        <span className="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded font-bold">
-                          Answer Key
+                    <tr key={q.id}>
+                      <td>
+                        <span className="font-black text-xs bg-blue-100 text-blue-800 px-2.5 py-1 rounded">
+                          Q{q.question_number}
                         </span>
-                      )}
-                    </div>
+                      </td>
+                      <td>
+                        <div className="font-semibold text-slate-900 text-xs mb-1">
+                          {q.question_text}
+                        </div>
+                        {hasImage && (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                              <ImageIcon size={12} />
+                              <span>Diagram Attached</span>
+                            </span>
+                            <img
+                              src={q.image_url}
+                              alt="Thumbnail"
+                              className="w-8 h-8 rounded border object-cover"
+                            />
+                          </div>
+                        )}
+                        {hasOptionImages && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 mt-1">
+                            <ImageIcon size={10} />
+                            <span>Visual Options</span>
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="text-xs font-bold text-slate-700">{q.topic || 'General'}</div>
+                        <div className="text-[11px] text-slate-400">{q.subtopic || 'Concept'}</div>
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded mt-1 inline-block ${
+                            q.difficulty === 'hard'
+                              ? 'bg-red-100 text-red-700'
+                              : q.difficulty === 'easy'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {q.difficulty?.toUpperCase() || 'MEDIUM'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="space-y-1">
+                          {q.options?.map((opt: any) => {
+                            const isCorrect = opt.id === q.correct_option_id;
+                            return (
+                              <div
+                                key={opt.id}
+                                className={`text-[11px] px-2 py-0.5 rounded flex items-center justify-between gap-1 ${
+                                  isCorrect
+                                    ? 'bg-emerald-100 text-emerald-900 font-bold border border-emerald-300'
+                                    : 'text-slate-600'
+                                }`}
+                              >
+                                <span>
+                                  {opt.option_label}: {opt.option_text}
+                                </span>
+                                {opt.image_url && (
+                                  <span title="Option has image">
+                                    <ImageIcon size={10} className="text-purple-600" />
+                                  </span>
+                                )}
+                                {isCorrect && <CheckCircle2 size={12} className="text-emerald-700" />}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="text-xs font-bold text-emerald-700">+{q.marks || 2}</span> /{' '}
+                        <span className="text-xs font-bold text-red-600">-{q.negative_marks || 0.5}</span>
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1">
+                          <button
+                            className="btn btn-secondary btn-sm p-1.5"
+                            onClick={() => openEditModal(q)}
+                            title="Edit question & images"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            className="btn btn-secondary btn-sm p-1.5 text-red-600 hover:bg-red-50"
+                            onClick={() => handleDelete(q.id)}
+                            title="Delete question"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   );
                 })}
-              </div>
-
-              {q.explanation && (
-                <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900 mt-2">
-                  <strong>Explanation:</strong> {q.explanation}
-                </div>
-              )}
-            </div>
-          ))
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      {/* ADD QUESTION MODAL */}
+      {/* ========================================================================= */}
+      {/* BULK UPLOAD QUESTIONS VIA JSON MODAL */}
+      {/* ========================================================================= */}
+      {isJsonModalOpen && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog modal-lg">
+            <div className="modal-header">
+              <div className="flex items-center gap-2">
+                <FileCode size={20} className="text-indigo-600" />
+                <h3 className="modal-title">Bulk Upload Questions (JSON Format)</h3>
+              </div>
+              <button className="btn-close" onClick={() => setIsJsonModalOpen(false)}>×</button>
+            </div>
+            <div className="modal-body space-y-4">
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-indigo-900 flex items-start gap-2">
+                <AlertCircle size={16} className="text-indigo-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <strong>Live Synchronized Bulk Upload:</strong> Uploading JSON will immediately persist questions to the live question repository and update counts across sections, exams, and candidate screens in real-time.
+                </div>
+              </div>
+
+              <div>
+                <label className="form-label">Upload .JSON File:</label>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleJsonFileSelect}
+                  className="form-input text-xs"
+                />
+              </div>
+
+              <div className="form-group">
+                <div className="flex items-center justify-between">
+                  <label className="form-label">Or Paste Questions JSON:</label>
+                  <button
+                    type="button"
+                    onClick={downloadJsonTemplate}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-bold"
+                  >
+                    Download Sample JSON
+                  </button>
+                </div>
+                <textarea
+                  className="form-input font-mono text-xs"
+                  rows={8}
+                  placeholder={`{\n  "questions": [\n    {\n      "question_number": 1,\n      "question_text": "Sample Question Text",\n      "image_url": null,\n      "topic": "Vocabulary",\n      "options": [\n        { "option_label": "A", "option_text": "Choice 1", "image_url": null },\n        { "option_label": "B", "option_text": "Choice 2", "image_url": null }\n      ],\n      "correct_option_label": "A"\n    }\n  ]\n}`}
+                  value={jsonContent}
+                  onChange={(e) => setJsonContent(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded">
+                <input
+                  type="checkbox"
+                  id="jsonReplaceCheck"
+                  checked={jsonReplace}
+                  onChange={(e) => setJsonReplace(e.target.checked)}
+                />
+                <label htmlFor="jsonReplaceCheck" className="text-xs text-slate-700 cursor-pointer font-medium">
+                  <strong>Replace existing question bank</strong> (Warning: unchecking will append questions instead of replacing)
+                </label>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsJsonModalOpen(false)}
+                disabled={isUploadingJson}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary bg-indigo-600 hover:bg-indigo-700"
+                onClick={handleExecuteJsonBulkUpload}
+                disabled={isUploadingJson}
+              >
+                {isUploadingJson ? 'Importing Questions...' : 'Upload & Sync Questions'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ADD / EDIT QUESTION MODAL (WITH IMAGE UPLOAD & DELETE) */}
+      {/* ========================================================================= */}
       {isModalOpen && (
         <div className="modal-backdrop">
           <div className="modal-dialog modal-lg">
             <div className="modal-header">
-              <h3 className="modal-title">Create New Question</h3>
+              <h3 className="modal-title">
+                {editingQuestion ? `Edit Question #${questionNumber}` : 'Create New Question'}
+              </h3>
               <button className="btn-close" onClick={() => setIsModalOpen(false)}>×</button>
             </div>
             <form onSubmit={handleSaveQuestion}>
               <div className="modal-body space-y-4">
-                <div className="grid-3-cols">
+                <div className="grid-2-cols gap-4">
                   <div className="form-group">
-                    <label className="form-label">Question # *</label>
+                    <label className="form-label">Question Number *</label>
                     <input
                       type="number"
                       className="form-input"
@@ -317,11 +620,26 @@ export const QuestionsPage: React.FC = () => {
                     />
                   </div>
                   <div className="form-group">
+                    <label className="form-label">Difficulty *</label>
+                    <select
+                      className="form-input"
+                      value={difficulty}
+                      onChange={(e) => setDifficulty(e.target.value as any)}
+                    >
+                      <option value="easy">Easy</option>
+                      <option value="medium">Medium</option>
+                      <option value="hard">Hard</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid-2-cols gap-4">
+                  <div className="form-group">
                     <label className="form-label">Topic *</label>
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="e.g. Grammar, Vocabulary"
+                      placeholder="e.g. Vocabulary, Reasoning, Algebra"
                       value={topic}
                       onChange={(e) => setTopic(e.target.value)}
                       required
@@ -332,79 +650,180 @@ export const QuestionsPage: React.FC = () => {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="e.g. Subject-Verb Agreement"
+                      placeholder="e.g. Synonyms, Blood Relations"
                       value={subtopic}
                       onChange={(e) => setSubtopic(e.target.value)}
                     />
                   </div>
                 </div>
 
+                {/* Question Text */}
                 <div className="form-group">
-                  <label className="form-label">Question Text *</label>
+                  <label className="form-label">Question Statement / Text *</label>
                   <textarea
                     className="form-input"
                     rows={3}
-                    placeholder="Enter the complete question prompt..."
+                    placeholder="Enter complete question statement..."
                     value={questionText}
                     onChange={(e) => setQuestionText(e.target.value)}
                     required
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="form-label">Four Answer Options (Select radio for correct answer) *</label>
-                  {['A', 'B', 'C', 'D'].map((label, idx) => (
-                    <div key={label} className="flex items-center gap-3">
+                {/* QUESTION IMAGE SECTION */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="form-label flex items-center gap-1.5 text-slate-800">
+                      <ImageIcon size={14} className="text-teal-600" />
+                      <span>Question Image / Diagram (Optional):</span>
+                    </label>
+                    {questionImage ? (
+                      <button
+                        type="button"
+                        onClick={() => setQuestionImage('')}
+                        className="text-xs text-red-600 hover:text-red-800 font-bold flex items-center gap-1"
+                      >
+                        <Trash2 size={12} />
+                        <span>Delete Image</span>
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      className="form-input flex-1 text-xs"
+                      placeholder="Paste Image URL or select file below..."
+                      value={questionImage}
+                      onChange={(e) => setQuestionImage(e.target.value)}
+                    />
+                    <label className="btn btn-secondary btn-sm cursor-pointer whitespace-nowrap">
+                      <span>Choose File</span>
                       <input
-                        type="radio"
-                        name="correctOption"
-                        checked={correctIndex === idx}
-                        onChange={() => setCorrectIndex(idx)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                        title="Mark as correct answer"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleFileUploadAsBase64(e, setQuestionImage)}
                       />
-                      <span className="font-bold text-slate-700 w-6">{label}.</span>
-                      <input
-                        type="text"
-                        className="form-input flex-1"
-                        placeholder={`Option ${label} text...`}
-                        value={options[idx]}
-                        onChange={(e) => handleOptionChange(idx, e.target.value)}
-                        required
+                    </label>
+                  </div>
+
+                  {questionImage ? (
+                    <div className="relative mt-2 p-2 bg-white rounded border border-slate-200 inline-block">
+                      <img
+                        src={questionImage}
+                        alt="Question Preview"
+                        className="max-h-36 max-w-full object-contain rounded"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setQuestionImage('')}
+                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow hover:bg-red-700"
+                        title="Delete Image"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* 4 OPTIONS WITH OPTIONAL IMAGES */}
+                <div className="space-y-3">
+                  <label className="form-label block font-bold text-slate-800">
+                    4 Multiple Choice Options (Text & Optional Images) *
+                  </label>
+                  {['A', 'B', 'C', 'D'].map((lbl, idx) => (
+                    <div
+                      key={lbl}
+                      className={`p-3 rounded-lg border space-y-2 transition-all ${
+                        correctIndex === idx
+                          ? 'border-emerald-400 bg-emerald-50/50'
+                          : 'border-slate-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="correctOption"
+                          id={`opt-radio-${lbl}`}
+                          checked={correctIndex === idx}
+                          onChange={() => setCorrectIndex(idx)}
+                          className="w-4 h-4 text-emerald-600 cursor-pointer"
+                        />
+                        <label
+                          htmlFor={`opt-radio-${lbl}`}
+                          className={`font-bold text-xs cursor-pointer ${
+                            correctIndex === idx ? 'text-emerald-800' : 'text-slate-700'
+                          }`}
+                        >
+                          Option {lbl} {correctIndex === idx && '(Correct Answer)'}
+                        </label>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          className="form-input flex-1 text-xs"
+                          placeholder={`Enter text for Option ${lbl}...`}
+                          value={options[idx]}
+                          onChange={(e) => handleOptionTextChange(idx, e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      {/* Option Image Upload / Delete */}
+                      <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                        <input
+                          type="text"
+                          className="form-input text-[11px] flex-1"
+                          placeholder={`Option ${lbl} Image URL (Optional)...`}
+                          value={optionImages[idx]}
+                          onChange={(e) => handleOptionImageChange(idx, e.target.value)}
+                        />
+                        <label className="btn btn-secondary btn-sm text-[11px] cursor-pointer whitespace-nowrap">
+                          <span>Upload Image</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={(e) =>
+                              handleFileUploadAsBase64(e, (b64) => handleOptionImageChange(idx, b64))
+                            }
+                          />
+                        </label>
+                        {optionImages[idx] && (
+                          <button
+                            type="button"
+                            onClick={() => handleOptionImageChange(idx, '')}
+                            className="text-red-600 hover:text-red-800 p-1"
+                            title="Delete Option Image"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+
+                      {optionImages[idx] && (
+                        <div className="p-1 bg-white border border-slate-200 rounded inline-block">
+                          <img
+                            src={optionImages[idx]}
+                            alt={`Option ${lbl}`}
+                            className="max-h-20 object-contain rounded"
+                          />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
 
-                <div className="grid-2-cols">
-                  <div className="form-group">
-                    <label className="form-label">Marks for Correct (+)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      className="form-input"
-                      value={marks}
-                      onChange={(e) => setMarks(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Negative Penalty (−)</label>
-                    <input
-                      type="number"
-                      step="0.05"
-                      className="form-input"
-                      value={negativeMarks}
-                      onChange={(e) => setNegativeMarks(Number(e.target.value))}
-                    />
-                  </div>
-                </div>
-
+                {/* Explanation */}
                 <div className="form-group">
-                  <label className="form-label">Detailed Solution & Explanation</label>
+                  <label className="form-label">Official Explanation & Steps</label>
                   <textarea
-                    className="form-input"
+                    className="form-input text-xs"
                     rows={3}
-                    placeholder="Provide official grammatical rule or mathematical steps..."
+                    placeholder="Provide concept breakdown and step-by-step solving logic..."
                     value={explanation}
                     onChange={(e) => setExplanation(e.target.value)}
                   />
@@ -412,54 +831,21 @@ export const QuestionsPage: React.FC = () => {
               </div>
 
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsModalOpen(false)}
+                >
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  Save Question & Protect Key
+                  {editingQuestion ? 'Update Question' : 'Create Question'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {/* CSV IMPORT MODAL */}
-      {isCsvModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-dialog modal-lg">
-            <div className="modal-header">
-              <h3 className="modal-title">Bulk Import Questions from CSV</h3>
-              <button className="btn-close" onClick={() => setIsCsvModalOpen(false)}>×</button>
-            </div>
-            <div className="modal-body space-y-4">
-              <p className="text-sm text-slate-600">
-                Paste CSV data below matching the columns:
-                <br />
-                <code className="text-xs bg-slate-100 p-1 rounded font-mono">
-                  question_number,question_text,option_A,option_B,option_C,option_D,correct_option,difficulty,topic,subtopic,marks,negative_marks,explanation
-                </code>
-              </p>
-              <textarea
-                className="form-input font-mono text-xs"
-                rows={10}
-                placeholder="Paste CSV rows here..."
-                value={csvContent}
-                onChange={(e) => setCsvContent(e.target.value)}
-              />
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setIsCsvModalOpen(false)}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleCsvImport}>
-                Import Rows into Current Section
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
-

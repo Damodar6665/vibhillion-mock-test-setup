@@ -13,6 +13,7 @@ import {
   SafeAreaView,
   Platform,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -45,11 +46,18 @@ export default function ExamResultScreen() {
 
   // Solutions data for Review Answers accordion (Screenshot 11)
   const [solutions, setSolutions] = useState<QuestionAnalysis[]>([]);
-  const [expandedQuestions, setExpandedQuestions] = useState<Record<string, boolean>>({
-    // Keep Q89 or first question open by default for illustration
-    0: true,
-  });
+  // Start with all questions collapsed so the 1st question does not open automatically
+  const [expandedQuestions, setExpandedQuestions] = useState<Record<string, boolean>>({});
   const [loadingSolutions, setLoadingSolutions] = useState(true);
+
+  const openOnlineReference = (url?: string) => {
+    if (!url) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      Linking.openURL(url).catch((err) => console.warn('Could not open reference URL:', err));
+    }
+  };
 
   useEffect(() => {
     async function fetchSolutions() {
@@ -461,17 +469,160 @@ export default function ExamResultScreen() {
                         </View>
                       )}
 
-                      {/* Question Time & Feedback */}
-                      <View style={styles.questionAnalysisFooter}>
-                        <Text style={styles.qTimeText}>
-                          Time spent: {sol.time_spent_seconds}s
-                        </Text>
-                        <Text style={styles.qRecommendationText}>
+                      {/* QUESTION ANALYSIS & SUGGESTIONS CONTAINER (SIMPLE & HUMAN UNDERSTANDABLE) */}
+                      <View
+                        style={[
+                          styles.analysisContainer,
+                          sol.is_correct && (sol.time_spent_seconds || 0) <= 45 && styles.analysisContainerFast,
+                          sol.is_correct && (sol.time_spent_seconds || 0) > 45 && styles.analysisContainerSlow,
+                          !sol.is_correct && sol.user_selected_option_id && styles.analysisContainerWrong,
+                          !sol.user_selected_option_id && styles.analysisContainerSkipped,
+                        ]}
+                      >
+                        <View style={styles.analysisHeaderRow}>
+                          <View style={styles.analysisTagPill}>
+                            <Ionicons
+                              name={
+                                sol.is_correct && (sol.time_spent_seconds || 0) <= 45
+                                  ? 'flash'
+                                  : sol.is_correct
+                                  ? 'time-outline'
+                                  : sol.user_selected_option_id
+                                  ? 'alert-circle'
+                                  : 'help-circle-outline'
+                              }
+                              size={13}
+                              color={
+                                sol.is_correct && (sol.time_spent_seconds || 0) <= 45
+                                  ? '#059669'
+                                  : sol.is_correct
+                                  ? '#D97706'
+                                  : sol.user_selected_option_id
+                                  ? '#DC2626'
+                                  : '#4F46E5'
+                              }
+                              style={{ marginRight: 4 }}
+                            />
+                            <Text
+                              style={[
+                                styles.analysisTagText,
+                                {
+                                  color:
+                                    sol.is_correct && (sol.time_spent_seconds || 0) <= 45
+                                      ? '#059669'
+                                      : sol.is_correct
+                                      ? '#B45309'
+                                      : sol.user_selected_option_id
+                                      ? '#DC2626'
+                                      : '#4338CA',
+                                },
+                              ]}
+                            >
+                              {sol.is_correct && (sol.time_spent_seconds || 0) <= 45
+                                ? '⚡ Great Speed'
+                                : sol.is_correct
+                                ? '⏳ Do It Fast'
+                                : sol.user_selected_option_id
+                                ? '⚠️ Needs Improvement'
+                                : '📚 Need More Practice'}
+                            </Text>
+                          </View>
+
+                          <Text style={styles.qTimeText}>
+                            Time spent: {sol.time_spent_seconds || 0}s
+                          </Text>
+                        </View>
+
+                        <Text
+                          style={[
+                            styles.analysisSuggestionText,
+                            !sol.is_correct && sol.user_selected_option_id && { color: '#DC2626', fontWeight: '600' },
+                          ]}
+                        >
                           {sol.recommendation ||
                             (sol.is_correct
-                              ? 'Correct answer! Keep up this high standard.'
-                              : 'Re-read the question concept and practice similar patterns.')}
+                              ? (sol.time_spent_seconds || 0) <= 45
+                                ? 'Great work! You solved this fast and correctly. Keep it up!'
+                                : 'Do it fast - You got it right (+2.0), but took extra time. Try to solve it faster next time!'
+                              : sol.user_selected_option_id
+                              ? 'Needs improvement - You got this wrong (-0.5). Need more practice on this topic to avoid mistakes.'
+                              : 'Need more practice - You skipped this question. Practice this topic so you can solve it next time.')}
                         </Text>
+
+                        {/* TOPIC-WISE ONLINE ANALYSIS & CURATED STUDY REFERENCE */}
+                        {sol.topic_analysis && (
+                          <View style={styles.topicAnalysisCard}>
+                            {/* Topic Header */}
+                            <View style={styles.topicAnalysisHeaderRow}>
+                              <View style={styles.topicBadgeWrap}>
+                                <Ionicons name="book" size={12} color="#0284C7" style={{ marginRight: 4 }} />
+                                <Text style={styles.topicBadgeText}>
+                                  {sol.topic || sol.topic_analysis.topic}
+                                  {sol.subtopic || sol.topic_analysis.subtopic
+                                    ? ` • ${sol.subtopic || sol.topic_analysis.subtopic}`
+                                    : ''}
+                                </Text>
+                              </View>
+                              {sol.topic_analysis.exam_weightage && (
+                                <View style={styles.weightageBadge}>
+                                  <Text style={styles.weightageBadgeText}>
+                                    {sol.topic_analysis.exam_weightage}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+
+                            {/* Core Concept Box */}
+                            <View style={styles.topicConceptBox}>
+                              <View style={styles.topicBoxLabelRow}>
+                                <Ionicons name="bulb-outline" size={13} color="#0369A1" style={{ marginRight: 4 }} />
+                                <Text style={styles.topicBoxLabel}>Topic Concept & Core Principle:</Text>
+                              </View>
+                              <Text style={styles.topicConceptText}>
+                                {sol.topic_analysis.concept_summary}
+                              </Text>
+                            </View>
+
+                            {/* Shortcut & Elimination Rule */}
+                            <View style={styles.topicRuleBox}>
+                              <View style={styles.topicBoxLabelRow}>
+                                <Ionicons name="flash-outline" size={13} color="#047857" style={{ marginRight: 4 }} />
+                                <Text style={[styles.topicBoxLabel, { color: '#047857' }]}>
+                                  Shortcut & Elimination Rule:
+                                </Text>
+                              </View>
+                              <Text style={styles.topicRuleText}>
+                                {sol.topic_analysis.core_rule}
+                              </Text>
+                            </View>
+
+                            {/* Clickable Online Study Reference */}
+                            {sol.topic_analysis.online_reference_url && (
+                              <TouchableOpacity
+                                style={styles.onlineRefButton}
+                                onPress={() => openOnlineReference(sol.topic_analysis?.online_reference_url)}
+                                activeOpacity={0.8}
+                              >
+                                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                                  <Ionicons name="globe-outline" size={14} color="#1D4ED8" style={{ marginRight: 6 }} />
+                                  <Text style={styles.onlineRefButtonText} numberOfLines={1}>
+                                    {sol.topic_analysis.online_reference_title ||
+                                      `Study ${sol.topic} Online (Syllabus & Practice)`}
+                                  </Text>
+                                </View>
+                                <Ionicons name="open-outline" size={14} color="#1D4ED8" />
+                              </TouchableOpacity>
+                            )}
+
+                            {/* Target Pacing Footer */}
+                            <View style={styles.topicAnalysisFooter}>
+                              <Ionicons name="stopwatch-outline" size={12} color="#64748B" style={{ marginRight: 4 }} />
+                              <Text style={styles.topicPacingText}>
+                                Benchmark Pacing: ≤{sol.topic_analysis.target_pacing_seconds || 45}s • Section: {sol.section_name}
+                              </Text>
+                            </View>
+                          </View>
+                        )}
                       </View>
                     </View>
                   )}
@@ -876,6 +1027,54 @@ const styles = StyleSheet.create({
     borderTopColor: '#F1F5F9',
     paddingTop: 10,
   },
+  analysisContainer: {
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  analysisContainerFast: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  analysisContainerSlow: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+  },
+  analysisContainerWrong: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  analysisContainerSkipped: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#E0E7FF',
+  },
+  analysisHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  analysisTagPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  },
+  analysisTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  analysisSuggestionText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#334155',
+    fontWeight: '500',
+  },
   qTimeText: {
     fontSize: 11,
     color: '#94A3B8',
@@ -888,5 +1087,105 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
     marginLeft: 12,
+  },
+  topicAnalysisCard: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(226, 232, 240, 0.8)',
+  },
+  topicAnalysisHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  topicBadgeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  topicBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
+  weightageBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  weightageBadgeText: {
+    fontSize: 10,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  topicConceptBox: {
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 6,
+  },
+  topicRuleBox: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 8,
+  },
+  topicBoxLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 3,
+  },
+  topicBoxLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
+  topicConceptText: {
+    fontSize: 11.5,
+    color: '#0C4A6E',
+    lineHeight: 16.5,
+  },
+  topicRuleText: {
+    fontSize: 11.5,
+    color: '#064E3B',
+    lineHeight: 16.5,
+    fontWeight: '500',
+  },
+  onlineRefButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    marginBottom: 6,
+  },
+  onlineRefButtonText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#1D4ED8',
+  },
+  topicAnalysisFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  topicPacingText: {
+    fontSize: 10.5,
+    color: '#64748B',
+    fontWeight: '500',
   },
 });

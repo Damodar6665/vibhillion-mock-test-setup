@@ -51,11 +51,24 @@ export default function PracticeExamScreen() {
 
   // Practice Mode: Starts from 00:00 and counts UP without time limit
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Sectional Elapsed Time: tracks active section practice time
+  const [sectionElapsedSeconds, setSectionElapsedSeconds] = useState<Record<string, number>>({
+    english: 0,
+    reasoning: 0,
+    quant: 0,
+    ga: 0,
+  });
+
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showPaletteModal, setShowPaletteModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const questionStartTimeRef = useRef<number>(Date.now());
+  const currentIndexRef = useRef<number>(currentIndex);
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
 
   useEffect(() => {
     async function loadTest() {
@@ -87,11 +100,28 @@ export default function PracticeExamScreen() {
     loadTest();
   }, [examId]);
 
-  // Elapsed timer counting UP forward
+  // Elapsed timer counting UP forward (Overall + Active Section)
+  // Continuous uninterrupted timer without stopping on Next
   useEffect(() => {
     if (loading || isSubmitting) return;
     const timer = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
+
+      setSectionElapsedSeconds((prev) => {
+        const curIdx = currentIndexRef.current;
+        const activeId =
+          curIdx < 25
+            ? 'english'
+            : curIdx < 50
+            ? 'reasoning'
+            : curIdx < 75
+            ? 'quant'
+            : 'ga';
+        return {
+          ...prev,
+          [activeId]: (prev[activeId] || 0) + 1,
+        };
+      });
     }, 1000);
     return () => clearInterval(timer);
   }, [loading, isSubmitting]);
@@ -243,9 +273,32 @@ export default function PracticeExamScreen() {
         </TouchableOpacity>
 
         <View style={styles.timerCenter}>
-          <Text style={styles.timerText}>{formatDuration(elapsedSeconds)}</Text>
+          <View style={styles.dualTimersRow}>
+            {/* Overall Exam Time */}
+            <View style={styles.examTimerBadge}>
+              <Ionicons name="time-outline" size={14} color="#0F172A" style={{ marginRight: 4 }} />
+              <View>
+                <Text style={styles.timerSubLabel}>EXAM</Text>
+                <Text style={styles.timerText}>{formatDuration(elapsedSeconds)}</Text>
+              </View>
+            </View>
+
+            {/* Sectional Timing beside the main timing */}
+            <View style={styles.sectionalTimerBadge}>
+              <Ionicons name="hourglass-outline" size={14} color="#0D9488" style={{ marginRight: 4 }} />
+              <View>
+                <Text style={styles.sectionalSubLabel}>
+                  {SECTION_TABS[activeSectionTab]?.name.slice(0, 7).toUpperCase()} SEC
+                </Text>
+                <Text style={styles.sectionalTimerText}>
+                  {formatDuration(sectionElapsedSeconds[SECTION_TABS[activeSectionTab]?.id || 'english'] || 0)}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           <Text style={styles.questionIndexText}>
-            Practice Q {currentIndex + 1}/{questions.length}
+            Practice Q {currentIndex + 1}/{questions.length} • {SECTION_TABS[activeSectionTab]?.name}
           </Text>
         </View>
 
@@ -503,9 +556,62 @@ const styles = StyleSheet.create({
   },
   quitBtn: { paddingVertical: 4, paddingHorizontal: 8 },
   quitText: { fontSize: 15, fontWeight: '700', color: '#64748B' },
-  timerCenter: { alignItems: 'center' },
-  timerText: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
-  questionIndexText: { fontSize: 12, color: '#64748B', marginTop: 2, fontWeight: '500' },
+  timerCenter: {
+    alignItems: 'center',
+  },
+  dualTimersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  examTimerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  timerSubLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 0.5,
+  },
+  timerText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  sectionalTimerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  sectionalSubLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#0D9488',
+    letterSpacing: 0.5,
+  },
+  sectionalTimerText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0D9488',
+  },
+  questionIndexText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 3,
+    fontWeight: '600',
+  },
   markBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 },
   markText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
   subHeader: {

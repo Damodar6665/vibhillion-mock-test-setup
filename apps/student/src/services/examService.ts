@@ -16,6 +16,7 @@ import {
   BookmarkItem,
   UserAttemptHistory,
   TopicPerformance,
+  getTopicOnlineAnalysis,
 } from '@vibhillion/shared';
 import {
   FULL_100_QUESTIONS,
@@ -636,45 +637,103 @@ export const examService = {
   },
 
   /**
-   * Fetch single exam details with sections
+   * Fetch live exam sections with independent duration and questions allocation
    */
-  async getExamDetails(examId: string): Promise<Exam | null> {
-    const examCopy = {
-      ...MOCK_EXAM,
-      total_questions: 100,
-      total_marks: 200.0,
-      sections: FULL_100_SECTIONS,
-    };
-    if (!isSupabaseConfigured) return examCopy;
+  async getExamSections(examId?: string): Promise<ExamSection[]> {
     try {
-      const { data, error } = await supabase
-        .from('exams')
-        .select('*, sections:exam_sections(*)')
-        .eq('id', examId)
-        .single();
-
-      if (error || !data) return examCopy;
-      return {
-        ...(data as Exam),
-        total_questions: 100,
-        total_marks: 200.0,
-        sections: (data.sections && data.sections.length > 0) ? data.sections : FULL_100_SECTIONS,
-      };
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch('http://localhost:5173/api/sections', { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          await AsyncStorage.setItem('@vibhillion_cached_sections', JSON.stringify(data));
+          return data;
+        }
+      }
     } catch {
-      return examCopy;
+      // offline / api unreachable
     }
+
+    try {
+      const cached = await AsyncStorage.getItem('@vibhillion_cached_sections');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+
+    return FULL_100_SECTIONS;
+  },
+
+  /**
+   * Fetch single exam details with sections and recalculated totals
+   */
+  async getExamDetails(examId: string): Promise<Exam> {
+    const sections = await this.getExamSections(examId);
+    const totalQ = sections.reduce((a, s) => a + Number(s.question_count || 0), 0) || 100;
+    const totalDur = sections.reduce((a, s) => a + Number(s.duration_seconds || 0), 0) || 3600;
+    const totalMarks = sections.reduce(
+      (a, s) => a + (Number(s.question_count || 0) * Number(s.marks_per_correct || 2)),
+      0
+    ) || 200;
+
+    return {
+      ...MOCK_EXAM,
+      total_questions: totalQ,
+      total_duration_seconds: totalDur,
+      total_marks: totalMarks,
+      sections,
+    };
   },
 
   /**
    * Fetch exam questions for test attempt.
-   * Delivers the comprehensive 100-question SSC CGL Tier-1 exam suite.
+   * Delivers the comprehensive live question suite synchronized with Admin backend.
    */
   async getExamQuestions(examId: string, sectionId?: string): Promise<Question[]> {
-    if (!sectionId || sectionId === 'all') {
-      return FULL_100_QUESTIONS;
+    let allQuestions: Question[] = [];
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      const url =
+        'http://localhost:5173/api/questions' +
+        (sectionId && sectionId !== 'all' ? `?section_id=${sectionId}` : '');
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          allQuestions = data;
+          await AsyncStorage.setItem('@vibhillion_cached_questions', JSON.stringify(data));
+        }
+      }
+    } catch {
+      // API unreachable, check cache
     }
-    const filtered = FULL_100_QUESTIONS.filter((q) => q.section_id === sectionId);
-    return filtered.length > 0 ? filtered : FULL_100_QUESTIONS;
+
+    if (allQuestions.length === 0) {
+      try {
+        const cached = await AsyncStorage.getItem('@vibhillion_cached_questions');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            allQuestions = parsed;
+          }
+        }
+      } catch {}
+    }
+
+    if (allQuestions.length === 0) {
+      allQuestions = FULL_100_QUESTIONS;
+    }
+
+    if (!sectionId || sectionId === 'all') {
+      return allQuestions;
+    }
+    const filtered = allQuestions.filter((q) => q.section_id === sectionId);
+    return filtered.length > 0 ? filtered : allQuestions;
   },
 
   /**
@@ -905,16 +964,17 @@ export const examService = {
     localAnswers?: Record<string, { optionId: string | null; timeSpent: number; marked: boolean }>,
     sectionId?: string
   ): Promise<QuestionAnalysis[]> {
-    const pool = FULL_100_QUESTIONS;
+    const pool = await this.getExamQuestions('e0000001-0000-0000-0000-000000000001', sectionId);
+    const sections = await this.getExamSections();
     const answers = localAnswers || {};
 
-    return pool.map((q) => {
+    return pool.map((q: any) => {
       const ans = answers[q.id];
       const selectedId = ans?.optionId || null;
-      const correctId = FULL_100_CORRECT_MAPPING[q.id];
+      const correctId = q.correct_option_id || FULL_100_CORRECT_MAPPING[q.id];
       const isCorrect = selectedId === correctId;
-      const marks = selectedId ? (isCorrect ? 2.0 : -0.5) : 0;
-      const sec = FULL_100_SECTIONS.find((s) => s.id === q.section_id);
+      const marks = selectedId ? (isCorrect ? (Number(q.marks) || 2.0) : -(Number(q.negative_marks) || 0.5)) : 0;
+      const sec = sections.find((s) => s.id === q.section_id);
 
       return {
         question_id: q.id,
@@ -929,8 +989,9 @@ export const examService = {
         section_name: sec?.name || 'Section',
         options: (q.options || []).map((o: any) => ({
           id: o.id,
-          label: o.option_label,
-          text: o.option_text,
+          label: o.option_label || o.label,
+          text: o.option_text || o.text,
+          image_url: o.image_url || null,
           display_order: o.display_order,
         })),
         user_selected_option_id: selectedId,
@@ -938,11 +999,17 @@ export const examService = {
         is_correct: selectedId ? isCorrect : false,
         marks_awarded: marks,
         time_spent_seconds: ans?.timeSpent || 0,
-        explanation: q.explanation,
-        solution_steps: q.solution_steps,
-        recommendation: isCorrect
-          ? 'Accurate attempt! Retain this methodology.'
-          : 'Review underlying rule and practice similar question patterns.',
+        explanation: q.explanation || q.answer_explanation,
+        solution_steps: q.solution_steps || [q.explanation || ''],
+        image_url: q.image_url || null,
+        recommendation: selectedId
+          ? isCorrect
+            ? (ans?.timeSpent || 0) <= 45
+              ? 'Great work! Solved fast and correctly. Keep it up!'
+              : 'Do it fast - Good job getting it right (+2.0), but took extra time. Try to solve it faster next time!'
+            : 'Needs improvement - You got this wrong (-0.5). Need more practice on this topic to avoid mistakes.'
+          : 'Need more practice - You skipped this question. Practice this topic so you can solve it next time.',
+        topic_analysis: q.topic_analysis || getTopicOnlineAnalysis(q.topic, q.subtopic, sec?.name, q.question_text),
       };
     });
   },
@@ -1202,30 +1269,9 @@ export const examService = {
   async getUserAttemptHistory(): Promise<UserAttemptHistory[]> {
     try {
       const localStr = await AsyncStorage.getItem(STORAGE_KEYS.ATTEMPT_HISTORY);
-      let list: UserAttemptHistory[] = localStr ? JSON.parse(localStr) : [];
-
-      // Seed with initial realistic attempt if empty for instant preview
-      if (list.length === 0) {
-        list = [
-          {
-            id: 'attempt-demo-01',
-            exam_id: MOCK_EXAM.id,
-            exam_title: MOCK_EXAM.title,
-            mode: 'timed',
-            score: 34.0,
-            maximum_score: 40.0,
-            accuracy_percentage: 85.0,
-            total_time_seconds: 520,
-            submitted_at: new Date(Date.now() - 86400000).toISOString(),
-            correct_count: 4,
-            wrong_count: 1,
-            unattempted_count: 0,
-          },
-        ];
-        await AsyncStorage.setItem(STORAGE_KEYS.ATTEMPT_HISTORY, JSON.stringify(list));
-      }
-
-      return list;
+      const list: UserAttemptHistory[] = localStr ? JSON.parse(localStr) : [];
+      // Filter out dummy demo attempts; only real attempts are returned
+      return list.filter((a) => !a.id.includes('demo'));
     } catch {
       return [];
     }

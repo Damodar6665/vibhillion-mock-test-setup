@@ -3,7 +3,7 @@
 // File: apps/student/src/app/exam/instructions.tsx
 // ==============================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { examService } from '@/services/examService';
+import { Exam } from '@vibhillion/shared';
 
 export default function TestInstructionsScreen() {
   const router = useRouter();
@@ -26,6 +28,17 @@ export default function TestInstructionsScreen() {
     (params.paperTitle as string) || 'SSC CGL T-I (Held on 12 Sep 2025 S1) – English';
 
   const [hasAgreed, setHasAgreed] = useState(false);
+  const [exam, setExam] = useState<Exam | null>(null);
+
+  useEffect(() => {
+    async function loadExam() {
+      try {
+        const data = await examService.getExamDetails(examId);
+        setExam(data);
+      } catch {}
+    }
+    loadExam();
+  }, [examId]);
 
   const handleContinue = () => {
     if (!hasAgreed) return;
@@ -75,14 +88,18 @@ export default function TestInstructionsScreen() {
           {/* Duration */}
           <View style={[styles.statBadge, { backgroundColor: '#F0FDF4' }]}>
             <Ionicons name="time-outline" size={22} color="#0D9488" />
-            <Text style={[styles.statValue, { color: '#0F172A' }]}>60</Text>
+            <Text style={[styles.statValue, { color: '#0F172A' }]}>
+              {Math.round((exam?.total_duration_seconds || 3600) / 60)}
+            </Text>
             <Text style={styles.statLabel}>minutes</Text>
           </View>
 
           {/* Total Questions */}
           <View style={[styles.statBadge, { backgroundColor: '#FFF7ED' }]}>
             <Ionicons name="disc-outline" size={22} color="#EA580C" />
-            <Text style={[styles.statValue, { color: '#0F172A' }]}>100</Text>
+            <Text style={[styles.statValue, { color: '#0F172A' }]}>
+              {exam?.total_questions || 100}
+            </Text>
             <Text style={styles.statLabel}>questions</Text>
           </View>
 
@@ -100,13 +117,15 @@ export default function TestInstructionsScreen() {
         <View style={styles.cardContainer}>
           <View style={styles.tableRow}>
             <Text style={styles.tableLabel}>Duration</Text>
-            <Text style={styles.tableValue}>60 minutes</Text>
+            <Text style={styles.tableValue}>
+              {Math.round((exam?.total_duration_seconds || 3600) / 60)} minutes
+            </Text>
           </View>
           <View style={styles.tableDivider} />
 
           <View style={styles.tableRow}>
             <Text style={styles.tableLabel}>Total questions</Text>
-            <Text style={styles.tableValue}>100</Text>
+            <Text style={styles.tableValue}>{exam?.total_questions || 100}</Text>
           </View>
           <View style={styles.tableDivider} />
 
@@ -191,7 +210,7 @@ export default function TestInstructionsScreen() {
 
         <View style={styles.cardContainer}>
           {[
-            'The test contains 100 questions to be attempted in 60 minutes.',
+            `The test contains ${exam?.total_questions || 100} questions to be attempted in ${Math.round((exam?.total_duration_seconds || 3600) / 60)} minutes.`,
             'Each correct answer carries 2 mark. 0.5 marks deducted for incorrect answers.',
             'Navigate between questions using the question palette (grid icon in the bottom bar).',
             'Use "Mark" in the top bar to flag a question for review; the palette shows marked questions in purple.',

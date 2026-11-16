@@ -10,6 +10,12 @@ import {
   ExamSection,
   Question,
   ExamAttempt,
+  FULL_100_QUESTIONS,
+  FULL_100_SECTIONS,
+  FULL_100_CORRECT_MAPPING,
+  TopicOnlineAnalysis,
+  DEFAULT_TOPIC_ANALYSIS_DB,
+  getTopicOnlineAnalysis,
 } from '@vibhillion/shared';
 
 // Mock in-memory state for offline/demo administration
@@ -49,186 +55,37 @@ let MOCK_EXAMS: Exam[] = [
   },
 ];
 
-let MOCK_SECTIONS: ExamSection[] = [
-  {
-    id: 'a0000001-0000-0000-0000-000000000001',
-    exam_id: 'e0000001-0000-0000-0000-000000000001',
-    name: 'English Comprehension',
-    display_order: 1,
-    question_count: 25,
-    duration_seconds: 900,
-    marks_per_correct: 2.0,
-    negative_marks_per_wrong: 0.5,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'a0000002-0000-0000-0000-000000000002',
-    exam_id: 'e0000001-0000-0000-0000-000000000001',
-    name: 'General Intelligence & Reasoning',
-    display_order: 2,
-    question_count: 25,
-    duration_seconds: 900,
-    marks_per_correct: 2.0,
-    negative_marks_per_wrong: 0.5,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'a0000003-0000-0000-0000-000000000003',
-    exam_id: 'e0000001-0000-0000-0000-000000000001',
-    name: 'Quantitative Aptitude',
-    display_order: 3,
-    question_count: 25,
-    duration_seconds: 900,
-    marks_per_correct: 2.0,
-    negative_marks_per_wrong: 0.5,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'a0000004-0000-0000-0000-000000000004',
-    exam_id: 'e0000001-0000-0000-0000-000000000001',
-    name: 'General Awareness',
-    display_order: 4,
-    question_count: 25,
-    duration_seconds: 900,
-    marks_per_correct: 2.0,
-    negative_marks_per_wrong: 0.5,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
+let MOCK_SECTIONS: ExamSection[] = [...FULL_100_SECTIONS];
 
-let MOCK_QUESTIONS: any[] = [
-  {
-    id: 'b0000001-0000-0000-0000-000000000001',
-    section_id: 'a0000001-0000-0000-0000-000000000001',
-    question_number: 1,
-    question_text: 'Select the segment that contains a grammatical error: "Neither the supervisor nor the engineers was present at the project site when the anomaly was reported."',
-    question_type: 'single_choice',
-    difficulty: 'medium',
-    topic: 'Grammar',
-    subtopic: 'Subject-Verb Agreement',
-    marks: 2.0,
-    negative_marks: 0.5,
-    explanation: 'When two subjects are joined by "Neither... nor", the verb agrees with the nearer subject ("engineers"). "were present" is correct.',
-    solution_steps: ['Identify conjunction', 'Locate nearest subject (engineers)', 'Replace was with were'],
-    options: [
-      { id: 'o1', option_label: 'A', option_text: 'Neither the supervisor', display_order: 1 },
-      { id: 'o2', option_label: 'B', option_text: 'nor the engineers was present', display_order: 2 },
-      { id: 'o3', option_label: 'C', option_text: 'at the project site', display_order: 3 },
-      { id: 'o4', option_label: 'D', option_text: 'when the anomaly was reported', display_order: 4 },
-    ],
-    correct_option_id: 'o2',
-  },
-  {
-    id: 'b0000001-0000-0000-0000-000000000002',
-    section_id: 'a0000001-0000-0000-0000-000000000001',
-    question_number: 2,
-    question_text: 'Select the most appropriate SYNONYM of the given word: METICULOUS',
-    question_type: 'single_choice',
-    difficulty: 'easy',
-    topic: 'Vocabulary',
-    subtopic: 'Synonyms',
-    marks: 2.0,
-    negative_marks: 0.5,
-    explanation: 'Meticulous means showing great attention to detail; very careful and precise. Painstaking is the exact synonym.',
-    options: [
-      { id: 'o5', option_label: 'A', option_text: 'Painstaking', display_order: 1 },
-      { id: 'o6', option_label: 'B', option_text: 'Careless', display_order: 2 },
-      { id: 'o7', option_label: 'C', option_text: 'Hasty', display_order: 3 },
-      { id: 'o8', option_label: 'D', option_text: 'Casual', display_order: 4 },
-    ],
-    correct_option_id: 'o5',
-  },
-  // Section 2: General Intelligence & Reasoning
-  {
-    id: 'b0000002-0000-0000-0000-000000000001',
-    section_id: 'a0000002-0000-0000-0000-000000000002',
-    question_number: 1,
-    question_text: 'Select the related word from the given alternatives: Architect : Building :: Sculptor : ?',
-    question_type: 'single_choice',
-    difficulty: 'easy',
-    topic: 'Reasoning',
-    subtopic: 'Analogy',
-    marks: 2.0,
-    negative_marks: 0.5,
-    explanation: 'An architect designs buildings; similarly, a sculptor carves and creates statues.',
-    solution_steps: ['Identify creator to creation relation', 'Architect -> Building', 'Sculptor -> Statue'],
-    options: [
-      { id: 'o21', option_label: 'A', option_text: 'Museum', display_order: 1 },
-      { id: 'o22', option_label: 'B', option_text: 'Stone', display_order: 2 },
-      { id: 'o23', option_label: 'C', option_text: 'Statue', display_order: 3 },
-      { id: 'o24', option_label: 'D', option_text: 'Chisel', display_order: 4 },
-    ],
-    correct_option_id: 'o23',
-  },
-  {
-    id: 'b0000002-0000-0000-0000-000000000002',
-    section_id: 'a0000002-0000-0000-0000-000000000002',
-    question_number: 2,
-    question_text: 'Find the next number in the sequence: 3, 7, 15, 31, 63, ?',
-    question_type: 'single_choice',
-    difficulty: 'medium',
-    topic: 'Reasoning',
-    subtopic: 'Number Series',
-    marks: 2.0,
-    negative_marks: 0.5,
-    explanation: 'The pattern is (number * 2) + 1. 63 * 2 + 1 = 127.',
-    solution_steps: ['Differences: 4, 8, 16, 32', 'Next difference is 64', '63 + 64 = 127'],
-    options: [
-      { id: 'o25', option_label: 'A', option_text: '127', display_order: 1 },
-      { id: 'o26', option_label: 'B', option_text: '125', display_order: 2 },
-      { id: 'o27', option_label: 'C', option_text: '129', display_order: 3 },
-      { id: 'o28', option_label: 'D', option_text: '131', display_order: 4 },
-    ],
-    correct_option_id: 'o25',
-  },
-  // Section 3: Quantitative Aptitude
-  {
-    id: 'b0000003-0000-0000-0000-000000000001',
-    section_id: 'a0000003-0000-0000-0000-000000000003',
-    question_number: 1,
-    question_text: 'If the price of a commodity increases by 25%, by what percentage must consumption be reduced so that expenditure remains unchanged?',
-    question_type: 'single_choice',
-    difficulty: 'medium',
-    topic: 'Mathematics',
-    subtopic: 'Percentages',
-    marks: 2.0,
-    negative_marks: 0.5,
-    explanation: 'Reduction = [25 / (100 + 25)] * 100% = 20%.',
-    solution_steps: ['% reduction = [r / (100 + r)] * 100', '25 / 125 * 100 = 20%'],
-    options: [
-      { id: 'o41', option_label: 'A', option_text: '20%', display_order: 1 },
-      { id: 'o42', option_label: 'B', option_text: '25%', display_order: 2 },
-      { id: 'o43', option_label: 'C', option_text: '16.67%', display_order: 3 },
-      { id: 'o44', option_label: 'D', option_text: '15%', display_order: 4 },
-    ],
-    correct_option_id: 'o41',
-  },
-  // Section 4: General Awareness
-  {
-    id: 'b0000004-0000-0000-0000-000000000001',
-    section_id: 'a0000004-0000-0000-0000-000000000004',
-    question_number: 1,
-    question_text: 'Which Article of the Constitution of India guarantees the Right to Equality before law and equal protection of the laws?',
-    question_type: 'single_choice',
-    difficulty: 'easy',
-    topic: 'General Awareness',
-    subtopic: 'Indian Polity',
-    marks: 2.0,
-    negative_marks: 0.5,
-    explanation: 'Article 14 guarantees equality before the law or the equal protection of the laws within India.',
-    options: [
-      { id: 'o61', option_label: 'A', option_text: 'Article 14', display_order: 1 },
-      { id: 'o62', option_label: 'B', option_text: 'Article 19', display_order: 2 },
-      { id: 'o63', option_label: 'C', option_text: 'Article 21', display_order: 3 },
-      { id: 'o64', option_label: 'D', option_text: 'Article 32', display_order: 4 },
-    ],
-    correct_option_id: 'o61',
-  },
-];
+let MOCK_QUESTIONS: any[] = FULL_100_QUESTIONS.map((q) => ({
+  ...q,
+  correct_option_id: FULL_100_CORRECT_MAPPING[q.id] || (q.options && q.options[0]?.id) || 'opt-1',
+  answer_explanation: q.explanation || '',
+}));
+
+function recalculateMockExam() {
+  if (MOCK_EXAMS.length > 0) {
+    MOCK_EXAMS[0].total_questions = MOCK_SECTIONS.reduce((a, s) => a + Number(s.question_count || 0), 0);
+    MOCK_EXAMS[0].total_duration_seconds = MOCK_SECTIONS.reduce((a, s) => a + Number(s.duration_seconds || 0), 0);
+    MOCK_EXAMS[0].total_marks = MOCK_SECTIONS.reduce(
+      (a, s) => a + (Number(s.question_count || 0) * Number(s.marks_per_correct || 2.0)),
+      0
+    );
+    MOCK_EXAMS[0].updated_at = new Date().toISOString();
+  }
+}
+
+async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
+  try {
+    const res = await fetch(endpoint, options);
+    if (res.ok) {
+      return (await res.json()) as T;
+    }
+  } catch {
+    // API not reachable, fallback to memory
+  }
+  return null;
+}
 
 let MOCK_AUDIT_LOG: any[] = [
   {
@@ -305,153 +162,164 @@ export const adminService = {
   // EXAMS
   // ----------------------------------------------------------------------------
   async getExams(): Promise<Exam[]> {
-    if (!isSupabaseConfigured) return [...MOCK_EXAMS];
-    const { data, error } = await supabase
-      .from('exams')
-      .select('*, category:categories(name), sections:exam_sections(*)')
-      .order('created_at', { ascending: false });
-    if (error || !data) return [...MOCK_EXAMS];
-    return data as Exam[];
+    const live = await apiCall<Exam[]>('/api/exams');
+    if (live && Array.isArray(live) && live.length > 0) {
+      MOCK_EXAMS = live;
+      return live;
+    }
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase
+        .from('exams')
+        .select('*, category:categories(name), sections:exam_sections(*)')
+        .order('created_at', { ascending: false });
+      if (!error && data && data.length > 0) return data as Exam[];
+    }
+    return [...MOCK_EXAMS];
   },
 
   async createExam(exam: Partial<Exam>): Promise<Exam> {
-    if (!isSupabaseConfigured) {
-      const newExam: Exam = {
-        id: 'exam-' + Date.now(),
-        category_id: exam.category_id || MOCK_CATEGORIES[0].id,
-        title: exam.title || 'Untitled Exam',
-        slug: exam.slug || 'untitled-exam-' + Date.now(),
-        description: exam.description || '',
-        exam_type: exam.exam_type || 'mock_test',
-        year: exam.year || 2025,
-        exam_date: exam.exam_date || '2025-09-12',
-        session: exam.session || 'Shift 1',
-        total_questions: exam.total_questions || 100,
-        total_duration_seconds: exam.total_duration_seconds || 3600,
-        total_marks: exam.total_marks || 200,
-        positive_marks: exam.positive_marks || 2.0,
-        negative_marks: exam.negative_marks || 0.5,
-        status: exam.status || 'draft',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      MOCK_EXAMS.push(newExam);
-      return newExam;
+    const apiRes = await apiCall<Exam>('/api/exams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(exam),
+    });
+    if (apiRes) {
+      MOCK_EXAMS.push(apiRes);
+      return apiRes;
     }
-    const { data, error } = await supabase.from('exams').insert(exam).select().single();
-    if (error) throw error;
-    return data as Exam;
+    const newExam: Exam = {
+      id: 'exam-' + Date.now(),
+      category_id: exam.category_id || MOCK_CATEGORIES[0].id,
+      title: exam.title || 'Untitled Exam',
+      slug: exam.slug || 'untitled-exam-' + Date.now(),
+      description: exam.description || '',
+      exam_type: exam.exam_type || 'mock_test',
+      year: exam.year || 2025,
+      exam_date: exam.exam_date || '2025-09-12',
+      session: exam.session || 'Shift 1',
+      total_questions: exam.total_questions || 100,
+      total_duration_seconds: exam.total_duration_seconds || 3600,
+      total_marks: exam.total_marks || 200,
+      positive_marks: exam.positive_marks || 2.0,
+      negative_marks: exam.negative_marks || 0.5,
+      status: exam.status || 'draft',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    MOCK_EXAMS.push(newExam);
+    return newExam;
   },
 
   async updateExam(id: string, updates: Partial<Exam>): Promise<Exam> {
-    if (!isSupabaseConfigured) {
-      const idx = MOCK_EXAMS.findIndex((e) => e.id === id);
-      if (idx !== -1) {
-        MOCK_EXAMS[idx] = { ...MOCK_EXAMS[idx], ...updates, updated_at: new Date().toISOString() };
-        return MOCK_EXAMS[idx];
-      }
-      throw new Error('Exam not found');
+    const apiRes = await apiCall<Exam>(`/api/exams/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    const idx = MOCK_EXAMS.findIndex((e) => e.id === id);
+    if (idx !== -1) {
+      MOCK_EXAMS[idx] = apiRes || { ...MOCK_EXAMS[idx], ...updates, updated_at: new Date().toISOString() };
+      return MOCK_EXAMS[idx];
     }
-    const { data, error } = await supabase.from('exams').update(updates).eq('id', id).select().single();
-    if (error) throw error;
-    return data as Exam;
+    if (apiRes) return apiRes;
+    throw new Error('Exam not found');
   },
 
   async deleteExam(id: string): Promise<void> {
-    if (!isSupabaseConfigured) {
-      MOCK_EXAMS = MOCK_EXAMS.filter((e) => e.id !== id);
-      return;
-    }
-    const { error } = await supabase.from('exams').delete().eq('id', id);
-    if (error) throw error;
+    await apiCall(`/api/exams/${id}`, { method: 'DELETE' });
+    MOCK_EXAMS = MOCK_EXAMS.filter((e) => e.id !== id);
   },
 
   // ----------------------------------------------------------------------------
   // SECTIONS
   // ----------------------------------------------------------------------------
   async getSections(examId?: string): Promise<ExamSection[]> {
-    if (!isSupabaseConfigured) {
-      if (examId) return MOCK_SECTIONS.filter((s) => s.exam_id === examId);
-      return [...MOCK_SECTIONS];
+    const live = await apiCall<ExamSection[]>('/api/sections');
+    if (live && Array.isArray(live) && live.length > 0) {
+      MOCK_SECTIONS = live;
+      recalculateMockExam();
+      if (examId) return live.filter((s) => s.exam_id === examId);
+      return live;
     }
-    let query = supabase.from('exam_sections').select('*').order('display_order', { ascending: true });
-    if (examId) query = query.eq('exam_id', examId);
-    const { data, error } = await query;
-    if (error || !data) return [...MOCK_SECTIONS];
-    return data as ExamSection[];
+    if (isSupabaseConfigured) {
+      let query = supabase.from('exam_sections').select('*').order('display_order', { ascending: true });
+      if (examId) query = query.eq('exam_id', examId);
+      const { data, error } = await query;
+      if (!error && data && data.length > 0) return data as ExamSection[];
+    }
+    if (examId) return MOCK_SECTIONS.filter((s) => s.exam_id === examId);
+    return [...MOCK_SECTIONS];
   },
 
   async createSection(sec: Partial<ExamSection>): Promise<ExamSection> {
-    if (!isSupabaseConfigured) {
-      const newSec: ExamSection = {
-        id: 'sec-' + Date.now(),
-        exam_id: sec.exam_id || MOCK_EXAMS[0].id,
-        name: sec.name || 'New Section',
-        display_order: sec.display_order || MOCK_SECTIONS.length + 1,
-        question_count: sec.question_count || 25,
-        duration_seconds: sec.duration_seconds || 900,
-        marks_per_correct: sec.marks_per_correct || 2.0,
-        negative_marks_per_wrong: sec.negative_marks_per_wrong || 0.5,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      MOCK_SECTIONS.push(newSec);
-      return newSec;
+    const apiRes = await apiCall<ExamSection>('/api/sections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sec),
+    });
+    if (apiRes) {
+      MOCK_SECTIONS.push(apiRes);
+      recalculateMockExam();
+      return apiRes;
     }
-    const { data, error } = await supabase.from('exam_sections').insert(sec).select().single();
-    if (error) throw error;
-    return data as ExamSection;
+    const newSec: ExamSection = {
+      id: 'sec-' + Date.now(),
+      exam_id: sec.exam_id || MOCK_EXAMS[0].id,
+      name: sec.name || 'New Section',
+      display_order: Number(sec.display_order) || MOCK_SECTIONS.length + 1,
+      question_count: Number(sec.question_count) || 25,
+      duration_seconds: Number(sec.duration_seconds) || 900,
+      marks_per_correct: Number(sec.marks_per_correct) || 2.0,
+      negative_marks_per_wrong: Number(sec.negative_marks_per_wrong) || 0.5,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    MOCK_SECTIONS.push(newSec);
+    recalculateMockExam();
+    return newSec;
   },
 
   async updateSection(id: string, updates: Partial<ExamSection>): Promise<ExamSection> {
-    if (!isSupabaseConfigured) {
-      const idx = MOCK_SECTIONS.findIndex((s) => s.id === id);
-      if (idx !== -1) {
-        MOCK_SECTIONS[idx] = { ...MOCK_SECTIONS[idx], ...updates, updated_at: new Date().toISOString() };
-        return MOCK_SECTIONS[idx];
-      }
-      throw new Error('Section not found');
+    const apiRes = await apiCall<ExamSection>(`/api/sections/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    const idx = MOCK_SECTIONS.findIndex((s) => s.id === id);
+    if (idx !== -1) {
+      MOCK_SECTIONS[idx] = apiRes || {
+        ...MOCK_SECTIONS[idx],
+        ...updates,
+        question_count: updates.question_count !== undefined ? Number(updates.question_count) : MOCK_SECTIONS[idx].question_count,
+        duration_seconds: updates.duration_seconds !== undefined ? Number(updates.duration_seconds) : MOCK_SECTIONS[idx].duration_seconds,
+        marks_per_correct: updates.marks_per_correct !== undefined ? Number(updates.marks_per_correct) : MOCK_SECTIONS[idx].marks_per_correct,
+        negative_marks_per_wrong: updates.negative_marks_per_wrong !== undefined ? Number(updates.negative_marks_per_wrong) : MOCK_SECTIONS[idx].negative_marks_per_wrong,
+        updated_at: new Date().toISOString(),
+      };
+      recalculateMockExam();
+      return MOCK_SECTIONS[idx];
     }
-    const { data, error } = await supabase.from('exam_sections').update(updates).eq('id', id).select().single();
-    if (error) throw error;
-    return data as ExamSection;
+    if (apiRes) return apiRes;
+    throw new Error('Section not found');
   },
 
   async deleteSection(id: string): Promise<void> {
-    if (!isSupabaseConfigured) {
-      MOCK_SECTIONS = MOCK_SECTIONS.filter((s) => s.id !== id);
-      return;
-    }
-    const { error } = await supabase.from('exam_sections').delete().eq('id', id);
-    if (error) throw error;
+    await apiCall(`/api/sections/${id}`, { method: 'DELETE' });
+    MOCK_SECTIONS = MOCK_SECTIONS.filter((s) => s.id !== id);
+    MOCK_QUESTIONS = MOCK_QUESTIONS.filter((q) => q.section_id !== id);
+    recalculateMockExam();
   },
 
   // ----------------------------------------------------------------------------
   // QUESTIONS & ANSWERS
   // ----------------------------------------------------------------------------
   async getQuestions(sectionId?: string): Promise<any[]> {
-    if (!isSupabaseConfigured) {
-      if (sectionId) return MOCK_QUESTIONS.filter((q) => q.section_id === sectionId);
-      return [...MOCK_QUESTIONS];
+    const live = await apiCall<any[]>(`/api/questions${sectionId ? '?section_id=' + sectionId : ''}`);
+    if (live && Array.isArray(live) && live.length > 0) {
+      return live;
     }
-    let query = supabase
-      .from('questions')
-      .select(`
-        *,
-        options:question_options(*),
-        answer:question_answers(correct_option_id, explanation, solution_steps)
-      `)
-      .order('question_number', { ascending: true });
-
-    if (sectionId) query = query.eq('section_id', sectionId);
-    const { data, error } = await query;
-    if (error || !data) return [...MOCK_QUESTIONS];
-
-    return data.map((q: any) => ({
-      ...q,
-      correct_option_id: q.answer?.correct_option_id,
-      answer_explanation: q.answer?.explanation,
-    }));
+    if (sectionId) return MOCK_QUESTIONS.filter((q) => q.section_id === sectionId);
+    return [...MOCK_QUESTIONS];
   },
 
   async createQuestion(payload: {
@@ -465,95 +333,216 @@ export const adminService = {
     negative_marks: number;
     explanation?: string;
     solution_steps?: string[];
-    options: string[]; // 4 options text
+    options: (string | { option_text: string; image_url?: string | null })[]; // 4 options
     correctOptionIndex: number; // 0..3
+    image_url?: string | null;
   }): Promise<void> {
-    if (!isSupabaseConfigured) {
-      const qId = 'q-' + Date.now();
-      const labels = ['A', 'B', 'C', 'D'];
-      const createdOptions = payload.options.map((text, idx) => ({
-        id: `opt-${qId}-${idx}`,
-        option_label: labels[idx] || `${idx + 1}`,
-        option_text: text,
-        display_order: idx + 1,
-      }));
+    const apiRes = await apiCall<any>('/api/questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-      const newQ = {
-        id: qId,
-        section_id: payload.section_id,
-        question_number: payload.question_number,
-        question_text: payload.question_text,
-        question_type: 'single_choice',
-        difficulty: payload.difficulty,
-        topic: payload.topic,
-        subtopic: payload.subtopic || '',
-        marks: payload.marks,
-        negative_marks: payload.negative_marks,
-        explanation: payload.explanation || '',
-        solution_steps: payload.solution_steps || [],
-        options: createdOptions,
-        correct_option_id: createdOptions[payload.correctOptionIndex]?.id,
-      };
-      MOCK_QUESTIONS.push(newQ);
-      return;
-    }
-
-    // 1. Insert Question
-    const { data: qData, error: qErr } = await supabase
-      .from('questions')
-      .insert({
-        section_id: payload.section_id,
-        question_number: payload.question_number,
-        question_text: payload.question_text,
-        difficulty: payload.difficulty,
-        topic: payload.topic,
-        subtopic: payload.subtopic,
-        marks: payload.marks,
-        negative_marks: payload.negative_marks,
-        explanation: payload.explanation,
-        solution_steps: payload.solution_steps || [],
-      })
-      .select()
-      .single();
-
-    if (qErr) throw qErr;
-
-    // 2. Insert Options
+    const qId = apiRes?.id || 'q-' + Date.now();
     const labels = ['A', 'B', 'C', 'D'];
-    const optionsToInsert = payload.options.map((optText, index) => ({
-      question_id: qData.id,
-      option_label: labels[index] || `${index + 1}`,
-      option_text: optText,
-      display_order: index + 1,
-    }));
+    const createdOptions = payload.options.map((optItem, idx) => {
+      const optText = typeof optItem === 'string' ? optItem : optItem.option_text;
+      const optImg = typeof optItem === 'object' ? (optItem.image_url || null) : null;
+      return {
+        id: `opt-${qId}-${idx}`,
+        question_id: qId,
+        option_label: labels[idx] || `${idx + 1}`,
+        option_text: optText,
+        image_url: optImg,
+        display_order: idx + 1,
+      };
+    });
 
-    const { data: optData, error: optErr } = await supabase
-      .from('question_options')
-      .insert(optionsToInsert)
-      .select();
+    const newQ = apiRes || {
+      id: qId,
+      section_id: payload.section_id,
+      question_number: Number(payload.question_number),
+      question_text: payload.question_text,
+      question_type: 'single_choice',
+      difficulty: payload.difficulty,
+      topic: payload.topic,
+      subtopic: payload.subtopic || '',
+      marks: Number(payload.marks),
+      negative_marks: Number(payload.negative_marks),
+      explanation: payload.explanation || '',
+      solution_steps: payload.solution_steps || [],
+      image_url: payload.image_url || null,
+      options: createdOptions,
+      correct_option_id: createdOptions[payload.correctOptionIndex]?.id,
+      answer_explanation: payload.explanation || '',
+    };
 
-    if (optErr) throw optErr;
+    MOCK_QUESTIONS.push(newQ);
 
-    // 3. Set Correct Answer Key
-    const correctOption = optData[payload.correctOptionIndex];
-    if (correctOption) {
-      const { error: ansErr } = await supabase.from('question_answers').insert({
-        question_id: qData.id,
-        correct_option_id: correctOption.id,
-        explanation: payload.explanation,
-        solution_steps: payload.solution_steps,
-      });
-      if (ansErr) throw ansErr;
+    const targetSec = MOCK_SECTIONS.find((s) => s.id === payload.section_id);
+    if (targetSec) {
+      targetSec.question_count = MOCK_QUESTIONS.filter((q) => q.section_id === payload.section_id).length;
     }
+    recalculateMockExam();
+  },
+
+  async updateQuestion(
+    id: string,
+    payload: {
+      question_number?: number;
+      question_text?: string;
+      difficulty?: string;
+      topic?: string;
+      subtopic?: string;
+      marks?: number;
+      negative_marks?: number;
+      explanation?: string;
+      solution_steps?: string[];
+      options?: (string | { id?: string; option_text: string; image_url?: string | null })[];
+      correctOptionIndex?: number;
+      correct_option_id?: string;
+      section_id?: string;
+      image_url?: string | null;
+    }
+  ): Promise<any> {
+    const apiRes = await apiCall<any>(`/api/questions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const idx = MOCK_QUESTIONS.findIndex((q) => q.id === id);
+    if (idx !== -1) {
+      const existing = MOCK_QUESTIONS[idx];
+      let updatedOptions = existing.options;
+
+      if (payload.options && payload.options.length > 0) {
+        const labels = ['A', 'B', 'C', 'D'];
+        updatedOptions = payload.options.map((optItem: any, oIdx: number) => {
+          const optText = typeof optItem === 'string' ? optItem : optItem.option_text;
+          const optImg = typeof optItem === 'object' ? (optItem.image_url !== undefined ? optItem.image_url : existing.options?.[oIdx]?.image_url || null) : null;
+          return {
+            id: (typeof optItem === 'object' && optItem.id) || existing.options?.[oIdx]?.id || `opt-${id}-${oIdx}`,
+            question_id: id,
+            option_label: labels[oIdx] || `${oIdx + 1}`,
+            option_text: optText,
+            image_url: optImg,
+            display_order: oIdx + 1,
+          };
+        });
+      }
+
+      let correctId = existing.correct_option_id;
+      if (payload.correctOptionIndex !== undefined && updatedOptions[payload.correctOptionIndex]) {
+        correctId = updatedOptions[payload.correctOptionIndex].id;
+      } else if (payload.correct_option_id) {
+        correctId = payload.correct_option_id;
+      }
+
+      MOCK_QUESTIONS[idx] = apiRes || {
+        ...existing,
+        ...payload,
+        image_url: payload.image_url !== undefined ? payload.image_url : existing.image_url,
+        options: updatedOptions,
+        correct_option_id: correctId,
+        explanation: payload.explanation !== undefined ? payload.explanation : existing.explanation,
+        answer_explanation: payload.explanation !== undefined ? payload.explanation : existing.answer_explanation,
+      };
+
+      if (payload.section_id && payload.section_id !== existing.section_id) {
+        MOCK_SECTIONS.forEach((s) => {
+          s.question_count = MOCK_QUESTIONS.filter((q) => q.section_id === s.id).length;
+        });
+      }
+      recalculateMockExam();
+      return MOCK_QUESTIONS[idx];
+    }
+    if (apiRes) return apiRes;
+    throw new Error('Question not found');
+  },
+
+  async bulkUploadQuestions(payload: { questions: any[]; replace?: boolean } | any[]): Promise<{
+    success: boolean;
+    uploaded_count: number;
+    total_questions: number;
+    questions: any[];
+  }> {
+    const apiRes = await apiCall<any>('/api/questions/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (apiRes && apiRes.success) {
+      if (apiRes.questions) {
+        MOCK_QUESTIONS = apiRes.questions;
+      }
+      return apiRes;
+    }
+
+    // In-memory fallback
+    const rawQuestions = Array.isArray(payload) ? payload : (payload.questions || []);
+    const labels = ['A', 'B', 'C', 'D'];
+    const processed = rawQuestions.map((item: any, idx: number) => {
+      const qId = item.id || `q-bulk-${Date.now()}-${idx + 1}`;
+      const secId = item.section_id || MOCK_SECTIONS[0]?.id;
+      let opts = item.options || [];
+      if (Array.isArray(opts)) {
+        opts = opts.map((opt: any, oIdx: number) => {
+          const optText = typeof opt === 'string' ? opt : (opt.option_text || opt.text || '');
+          const optImg = typeof opt === 'object' ? (opt.image_url || null) : null;
+          return {
+            id: (typeof opt === 'object' && opt.id) ? opt.id : `opt-${qId}-${oIdx}`,
+            question_id: qId,
+            option_label: (typeof opt === 'object' && opt.option_label) || labels[oIdx] || `${oIdx + 1}`,
+            option_text: optText,
+            image_url: optImg,
+            display_order: oIdx + 1,
+          };
+        });
+      }
+      return {
+        id: qId,
+        section_id: secId,
+        question_number: Number(item.question_number) || (MOCK_QUESTIONS.length + idx + 1),
+        question_text: item.question_text || item.text || 'Untitled Question',
+        difficulty: item.difficulty || 'medium',
+        topic: item.topic || 'General Topic',
+        subtopic: item.subtopic || '',
+        marks: Number(item.marks) || 2.0,
+        negative_marks: Number(item.negative_marks) || 0.5,
+        explanation: item.explanation || '',
+        image_url: item.image_url || null,
+        options: opts,
+        correct_option_id: opts[0]?.id,
+        answer_explanation: item.explanation || '',
+      };
+    });
+
+    MOCK_QUESTIONS.push(...processed);
+    recalculateMockExam();
+    return {
+      success: true,
+      uploaded_count: processed.length,
+      total_questions: MOCK_QUESTIONS.length,
+      questions: MOCK_QUESTIONS,
+    };
   },
 
   async deleteQuestion(id: string): Promise<void> {
-    if (!isSupabaseConfigured) {
-      MOCK_QUESTIONS = MOCK_QUESTIONS.filter((q) => q.id !== id);
-      return;
+    await apiCall(`/api/questions/${id}`, { method: 'DELETE' });
+    const existing = MOCK_QUESTIONS.find((q) => q.id === id);
+    const secId = existing?.section_id;
+
+    MOCK_QUESTIONS = MOCK_QUESTIONS.filter((q) => q.id !== id);
+
+    if (secId) {
+      const targetSec = MOCK_SECTIONS.find((s) => s.id === secId);
+      if (targetSec) {
+        targetSec.question_count = MOCK_QUESTIONS.filter((q) => q.section_id === secId).length;
+      }
     }
-    const { error } = await supabase.from('questions').delete().eq('id', id);
-    if (error) throw error;
+    recalculateMockExam();
   },
 
   // ----------------------------------------------------------------------------
@@ -696,6 +685,35 @@ export const adminService = {
 
     if (error || !data) return [];
     return data as ExamAttempt[];
+  },
+
+  // ----------------------------------------------------------------------------
+  // TOPIC-WISE ONLINE ANALYSIS & REFERENCES MANAGEMENT
+  // ----------------------------------------------------------------------------
+  async getTopicAnalyses(): Promise<Record<string, TopicOnlineAnalysis>> {
+    const res = await apiCall<Record<string, TopicOnlineAnalysis>>('/api/topic-analysis');
+    if (res && typeof res === 'object') {
+      return { ...DEFAULT_TOPIC_ANALYSIS_DB, ...res };
+    }
+    return { ...DEFAULT_TOPIC_ANALYSIS_DB };
+  },
+
+  async saveTopicAnalysis(topicKey: string, analysis: Partial<TopicOnlineAnalysis>): Promise<boolean> {
+    const res = await apiCall<{ success: boolean }>('/api/topic-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: topicKey, analysis }),
+    });
+    return !!(res && res.success);
+  },
+
+  async bulkUpdateTopicAnalyses(topicAnalyses: Record<string, TopicOnlineAnalysis>): Promise<boolean> {
+    const res = await apiCall<{ success: boolean }>('/api/topic-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic_analyses: topicAnalyses }),
+    });
+    return !!(res && res.success);
   },
 };
 
