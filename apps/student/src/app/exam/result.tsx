@@ -50,6 +50,18 @@ export default function ExamResultScreen() {
   const [expandedQuestions, setExpandedQuestions] = useState<Record<string, boolean>>({});
   const [loadingSolutions, setLoadingSolutions] = useState(true);
 
+  // Interactive filters
+  const [statusFilter, setStatusFilter] = useState<'all' | 'correct' | 'wrong' | 'unattempted' | 'answered'>('all');
+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
+  const scrollViewRef = React.useRef<any>(null);
+  const [reviewYPos, setReviewYPos] = useState<number>(0);
+
+  const scrollToReview = () => {
+    if (reviewYPos > 0 && scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: reviewYPos - 20, animated: true });
+    }
+  };
+
   const openOnlineReference = (url?: string) => {
     if (!url) return;
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -72,10 +84,51 @@ export default function ExamResultScreen() {
     fetchSolutions();
   }, [attemptId]);
 
-  const toggleExpand = (qIndex: number) => {
+  // Dynamic real counts computed from live solutions data
+  const realCorrectCount = solutions.length > 0 ? solutions.filter((s) => s.is_correct).length : correctCount;
+  const realWrongCount = solutions.length > 0 ? solutions.filter((s) => !s.is_correct && Boolean(s.user_selected_option_id)).length : wrongCount;
+  const realUnattemptedCount = solutions.length > 0 ? solutions.filter((s) => !s.user_selected_option_id).length : unattemptedCount;
+  const realAnsweredCount = solutions.length > 0 ? solutions.filter((s) => Boolean(s.user_selected_option_id)).length : attemptedCount;
+  const totalCount = solutions.length > 0 ? solutions.length : totalQuestions;
+
+  const realCorrectShare = totalCount > 0 ? Math.round((realCorrectCount / totalCount) * 100) : 0;
+  const realWrongShare = totalCount > 0 ? Math.round((realWrongCount / totalCount) * 100) : 0;
+  const realUnattemptedShare = totalCount > 0 ? Math.round((realUnattemptedCount / totalCount) * 100) : 0;
+  const realAnsweredShare = totalCount > 0 ? Math.round((realAnsweredCount / totalCount) * 100) : 0;
+
+  // Filter questions dynamically based on selected status bucket and subject
+  const filteredSolutions = React.useMemo(() => {
+    let list = solutions;
+
+    if (selectedSubjectFilter !== 'all') {
+      list = list.filter((s) => {
+        const secName = s.section_name || '';
+        return (
+          secName.toLowerCase().includes(selectedSubjectFilter.toLowerCase()) ||
+          (s.topic && s.topic.toLowerCase().includes(selectedSubjectFilter.toLowerCase()))
+        );
+      });
+    }
+
+    if (statusFilter === 'answered') {
+      return list.filter((s) => Boolean(s.user_selected_option_id));
+    }
+    if (statusFilter === 'correct') {
+      return list.filter((s) => s.is_correct);
+    }
+    if (statusFilter === 'wrong') {
+      return list.filter((s) => !s.is_correct && Boolean(s.user_selected_option_id));
+    }
+    if (statusFilter === 'unattempted') {
+      return list.filter((s) => !s.user_selected_option_id);
+    }
+    return list;
+  }, [solutions, statusFilter, selectedSubjectFilter]);
+
+  const toggleExpand = (qKey: string | number) => {
     setExpandedQuestions((prev) => ({
       ...prev,
-      [qIndex]: !prev[qIndex],
+      [qKey]: !prev[qKey],
     }));
   };
 
@@ -85,6 +138,7 @@ export default function ExamResultScreen() {
       subject: 'english',
       name: 'English Comprehension',
       qs: 25,
+      answered: 0,
       correct: 0,
       wrong: 0,
       skipped: 25,
@@ -94,6 +148,7 @@ export default function ExamResultScreen() {
       subject: 'general_knowledge',
       name: 'General Awareness',
       qs: 25,
+      answered: 0,
       correct: 0,
       wrong: 0,
       skipped: 25,
@@ -103,6 +158,7 @@ export default function ExamResultScreen() {
       subject: 'quantitative_aptitude',
       name: 'Quantitative Aptitude',
       qs: 25,
+      answered: 0,
       correct: 0,
       wrong: 0,
       skipped: 25,
@@ -112,6 +168,7 @@ export default function ExamResultScreen() {
       subject: 'reasoning',
       name: 'General Intelligence & Reasoning',
       qs: 25,
+      answered: 0,
       correct: 0,
       wrong: 0,
       skipped: 25,
@@ -127,6 +184,7 @@ export default function ExamResultScreen() {
     else if (sol.section_id.endsWith('0004')) sIdx = 1; // gk
 
     if (sol.user_selected_option_id) {
+      sectionsSummary[sIdx].answered += 1;
       if (sol.is_correct) {
         sectionsSummary[sIdx].correct += 1;
       } else {
@@ -137,7 +195,7 @@ export default function ExamResultScreen() {
   });
 
   sectionsSummary.forEach((s) => {
-    const att = s.correct + s.wrong;
+    const att = s.answered;
     s.acc = att > 0 ? `${((s.correct / att) * 100).toFixed(0)}%` : '0%';
   });
 
@@ -161,6 +219,7 @@ export default function ExamResultScreen() {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -188,20 +247,54 @@ export default function ExamResultScreen() {
 
           <Text style={styles.answerDistTitle}>Answer distribution</Text>
           <View style={styles.answerDistDotsRow}>
-            <View style={styles.distDotItem}>
+            {/* Answered first */}
+            <TouchableOpacity
+              style={styles.distDotItem}
+              onPress={() => {
+                setStatusFilter('answered');
+                setSelectedSubjectFilter('all');
+                scrollToReview();
+              }}
+            >
+              <View style={[styles.distDot, { backgroundColor: '#0D9488' }]} />
+              <Text style={styles.distDotText}>Answered {realAnsweredCount}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.distDotItem}
+              onPress={() => {
+                setStatusFilter('correct');
+                setSelectedSubjectFilter('all');
+                scrollToReview();
+              }}
+            >
               <View style={[styles.distDot, { backgroundColor: '#22C55E' }]} />
-              <Text style={styles.distDotText}>Correct {correctCount}</Text>
-            </View>
+              <Text style={styles.distDotText}>Correct {realCorrectCount}</Text>
+            </TouchableOpacity>
 
-            <View style={styles.distDotItem}>
+            <TouchableOpacity
+              style={styles.distDotItem}
+              onPress={() => {
+                setStatusFilter('wrong');
+                setSelectedSubjectFilter('all');
+                scrollToReview();
+              }}
+            >
               <View style={[styles.distDot, { backgroundColor: '#EF4444' }]} />
-              <Text style={styles.distDotText}>Wrong {wrongCount}</Text>
-            </View>
+              <Text style={styles.distDotText}>Wrong {realWrongCount}</Text>
+            </TouchableOpacity>
 
-            <View style={styles.distDotItem}>
+            <TouchableOpacity
+              style={styles.distDotItem}
+              onPress={() => {
+                setStatusFilter('unattempted');
+                setSelectedSubjectFilter('all');
+                scrollToReview();
+              }}
+            >
               <View style={[styles.distDot, { backgroundColor: '#64748B' }]} />
-              <Text style={styles.distDotText}>Unanswered {unattemptedCount}</Text>
-            </View>
+              <Text style={styles.distDotText}>Unanswered {realUnattemptedCount}</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Performance Pill Badge */}
@@ -212,42 +305,210 @@ export default function ExamResultScreen() {
         </View>
 
         {/* ========================================================================= */}
-        {/* ANSWER BREAKDOWN TABLE (SCREENSHOT 9) */}
+        {/* 4-STATUS PERFORMANCE BREAKDOWN TABLE (CLICKABLE NUMBERS & ROWS TO FILTER) */}
         {/* ========================================================================= */}
-        <Text style={styles.sectionHeading}>Answer breakdown</Text>
+        <View style={styles.breakdownTitleRow}>
+          <Text style={styles.sectionHeading}>Performance & Question Status Breakdown</Text>
+          <Text style={styles.breakdownSubhint}>
+            Tap any row or number below to directly display and review the related questions
+          </Text>
+        </View>
+
         <View style={styles.tableCard}>
           <View style={styles.tableHeaderRow}>
-            <Text style={[styles.tableColHeader, { flex: 2 }]}>RESULT</Text>
-            <Text style={[styles.tableColHeader, { flex: 1, textAlign: 'center' }]}>COUNT</Text>
-            <Text style={[styles.tableColHeader, { flex: 1, textAlign: 'right' }]}>SHARE</Text>
+            <Text style={[styles.tableColHeader, { flex: 2.2 }]}>STATUS CATEGORY</Text>
+            <Text style={[styles.tableColHeader, { width: 60, textAlign: 'center' }]}>QS</Text>
+            <Text style={[styles.tableColHeader, { width: 55, textAlign: 'center' }]}>SHARE</Text>
+            <Text style={[styles.tableColHeader, { flex: 1.8, textAlign: 'right' }]}>SCORING IMPACT</Text>
           </View>
           <View style={styles.tableDivider} />
 
-          <View style={styles.tableDataRow}>
-            <Text style={[styles.tableDataText, { flex: 2, color: '#059669', fontWeight: '700' }]}>
-              Correct
+          {/* Row 1: Answered (Attempted) FIRST as requested */}
+          <TouchableOpacity
+            style={[styles.interactiveTableRow, statusFilter === 'answered' && styles.interactiveTableRowActive]}
+            activeOpacity={0.7}
+            onPress={() => {
+              setStatusFilter(statusFilter === 'answered' ? 'all' : 'answered');
+              setSelectedSubjectFilter('all');
+              scrollToReview();
+            }}
+          >
+            <View style={{ flex: 2.2, flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.statusDotIcon, { backgroundColor: '#CCFBF1', borderColor: '#99F6E4' }]}>
+                <Ionicons name="checkbox" size={14} color="#0D9488" />
+              </View>
+              <Text style={[styles.tableDataText, { fontWeight: '700', color: '#0D9488', marginLeft: 8 }]}>
+                Answered (Attempted)
+              </Text>
+              {statusFilter === 'answered' && (
+                <View style={styles.activeFilterPill}>
+                  <Text style={styles.activeFilterPillText}>FILTERED</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Clickable Number Pill */}
+            <TouchableOpacity
+              style={[styles.numberCellPill, { backgroundColor: '#CCFBF1', borderColor: '#99F6E4' }]}
+              onPress={() => {
+                setStatusFilter('answered');
+                setSelectedSubjectFilter('all');
+                scrollToReview();
+              }}
+            >
+              <Text style={[styles.numberCellText, { color: '#0F766E' }]}>
+                {realAnsweredCount}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.tableDataText, { width: 55, textAlign: 'center', color: '#64748B' }]}>
+              {realAnsweredShare}%
             </Text>
-            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'center' }]}>{correctCount}</Text>
-            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'right' }]}>{correctShare}%</Text>
-          </View>
+            <Text style={[styles.tableDataText, { flex: 1.8, textAlign: 'right', fontWeight: '700', color: '#0D9488' }]}>
+              Net: {(realCorrectCount * 2 - realWrongCount * 0.5).toFixed(1)} marks
+            </Text>
+          </TouchableOpacity>
           <View style={styles.tableDivider} />
 
-          <View style={styles.tableDataRow}>
-            <Text style={[styles.tableDataText, { flex: 2, color: '#DC2626', fontWeight: '700' }]}>
-              Wrong
+          {/* Row 2: Correct */}
+          <TouchableOpacity
+            style={[styles.interactiveTableRow, statusFilter === 'correct' && styles.interactiveTableRowActive]}
+            activeOpacity={0.7}
+            onPress={() => {
+              setStatusFilter(statusFilter === 'correct' ? 'all' : 'correct');
+              setSelectedSubjectFilter('all');
+              scrollToReview();
+            }}
+          >
+            <View style={{ flex: 2.2, flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.statusDotIcon, { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' }]}>
+                <Ionicons name="checkmark-circle" size={14} color="#059669" />
+              </View>
+              <Text style={[styles.tableDataText, { fontWeight: '700', color: '#059669', marginLeft: 8 }]}>
+                Correct
+              </Text>
+              {statusFilter === 'correct' && (
+                <View style={styles.activeFilterPill}>
+                  <Text style={styles.activeFilterPillText}>FILTERED</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Clickable Number Pill */}
+            <TouchableOpacity
+              style={[styles.numberCellPill, { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' }]}
+              onPress={() => {
+                setStatusFilter('correct');
+                setSelectedSubjectFilter('all');
+                scrollToReview();
+              }}
+            >
+              <Text style={[styles.numberCellText, { color: '#059669' }]}>
+                {realCorrectCount}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.tableDataText, { width: 55, textAlign: 'center', color: '#64748B' }]}>
+              {realCorrectShare}%
             </Text>
-            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'center' }]}>{wrongCount}</Text>
-            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'right' }]}>{wrongShare}%</Text>
-          </View>
+            <Text style={[styles.tableDataText, { flex: 1.8, textAlign: 'right', fontWeight: '700', color: '#059669' }]}>
+              +{(realCorrectCount * 2).toFixed(1)} marks
+            </Text>
+          </TouchableOpacity>
           <View style={styles.tableDivider} />
 
-          <View style={styles.tableDataRow}>
-            <Text style={[styles.tableDataText, { flex: 2, color: '#64748B', fontWeight: '600' }]}>
-              Unanswered
+          {/* Row 3: Wrong */}
+          <TouchableOpacity
+            style={[styles.interactiveTableRow, statusFilter === 'wrong' && styles.interactiveTableRowActive]}
+            activeOpacity={0.7}
+            onPress={() => {
+              setStatusFilter(statusFilter === 'wrong' ? 'all' : 'wrong');
+              setSelectedSubjectFilter('all');
+              scrollToReview();
+            }}
+          >
+            <View style={{ flex: 2.2, flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.statusDotIcon, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
+                <Ionicons name="close-circle" size={14} color="#DC2626" />
+              </View>
+              <Text style={[styles.tableDataText, { fontWeight: '700', color: '#DC2626', marginLeft: 8 }]}>
+                Wrong
+              </Text>
+              {statusFilter === 'wrong' && (
+                <View style={styles.activeFilterPill}>
+                  <Text style={styles.activeFilterPillText}>FILTERED</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Clickable Number Pill */}
+            <TouchableOpacity
+              style={[styles.numberCellPill, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}
+              onPress={() => {
+                setStatusFilter('wrong');
+                setSelectedSubjectFilter('all');
+                scrollToReview();
+              }}
+            >
+              <Text style={[styles.numberCellText, { color: '#DC2626' }]}>
+                {realWrongCount}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.tableDataText, { width: 55, textAlign: 'center', color: '#64748B' }]}>
+              {realWrongShare}%
             </Text>
-            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'center' }]}>{unattemptedCount}</Text>
-            <Text style={[styles.tableDataText, { flex: 1, textAlign: 'right' }]}>{unattemptedShare}%</Text>
-          </View>
+            <Text style={[styles.tableDataText, { flex: 1.8, textAlign: 'right', fontWeight: '700', color: '#DC2626' }]}>
+              -{(realWrongCount * 0.5).toFixed(1)} penalty
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.tableDivider} />
+
+          {/* Row 4: Skipped / Unattempted */}
+          <TouchableOpacity
+            style={[styles.interactiveTableRow, statusFilter === 'unattempted' && styles.interactiveTableRowActive]}
+            activeOpacity={0.7}
+            onPress={() => {
+              setStatusFilter(statusFilter === 'unattempted' ? 'all' : 'unattempted');
+              setSelectedSubjectFilter('all');
+              scrollToReview();
+            }}
+          >
+            <View style={{ flex: 2.2, flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.statusDotIcon, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}>
+                <Ionicons name="help-circle" size={14} color="#4F46E5" />
+              </View>
+              <Text style={[styles.tableDataText, { fontWeight: '700', color: '#4F46E5', marginLeft: 8 }]}>
+                Skipped / Unattempted
+              </Text>
+              {statusFilter === 'unattempted' && (
+                <View style={styles.activeFilterPill}>
+                  <Text style={styles.activeFilterPillText}>FILTERED</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Clickable Number Pill */}
+            <TouchableOpacity
+              style={[styles.numberCellPill, { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' }]}
+              onPress={() => {
+                setStatusFilter('unattempted');
+                setSelectedSubjectFilter('all');
+                scrollToReview();
+              }}
+            >
+              <Text style={[styles.numberCellText, { color: '#4F46E5' }]}>
+                {realUnattemptedCount}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.tableDataText, { width: 55, textAlign: 'center', color: '#64748B' }]}>
+              {realUnattemptedShare}%
+            </Text>
+            <Text style={[styles.tableDataText, { flex: 1.8, textAlign: 'right', fontWeight: '600', color: '#64748B' }]}>
+              0 marks (Safe)
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* TIME TAKEN & ACCURACY METRIC CARDS */}
@@ -270,17 +531,18 @@ export default function ExamResultScreen() {
         {/* ========================================================================= */}
         <Text style={styles.sectionHeading}>Subject and topic results</Text>
         <Text style={styles.subjectDescText}>
-          This report describes this test, not a permanent judgment of your ability. Progress compares your recent attempts of this same test. Strength needs at least 5 questions, 3 attempted answers, 80% accuracy, and 70% coverage. Improvement areas have below 60% accuracy or 50% coverage.
+          This report describes this test, not a permanent judgment of your ability. Progress compares your recent attempts of this same test. Tap any number or subject name to inspect the corresponding questions.
         </Text>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-          <View style={[styles.tableCard, { minWidth: 360 }]}>
+          <View style={[styles.tableCard, { minWidth: 440 }]}>
             <View style={styles.tableHeaderRow}>
-              <Text style={[styles.tableColHeader, { flex: 2 }]}>SUBJECT / CATEGORY</Text>
-              <Text style={[styles.tableColHeader, { width: 36, textAlign: 'center' }]}>QS</Text>
-              <Text style={[styles.tableColHeader, { width: 56, textAlign: 'center' }]}>CORRECT</Text>
-              <Text style={[styles.tableColHeader, { width: 56, textAlign: 'center' }]}>WRONG</Text>
-              <Text style={[styles.tableColHeader, { width: 56, textAlign: 'center' }]}>SKIPPED</Text>
+              <Text style={[styles.tableColHeader, { flex: 2.2 }]}>SUBJECT / CATEGORY</Text>
+              <Text style={[styles.tableColHeader, { width: 44, textAlign: 'center' }]}>QS</Text>
+              <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#0D9488' }]}>ANSWERED</Text>
+              <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#059669' }]}>CORRECT</Text>
+              <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#DC2626' }]}>WRONG</Text>
+              <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#4F46E5' }]}>SKIPPED</Text>
               <Text style={[styles.tableColHeader, { width: 44, textAlign: 'right' }]}>ACC</Text>
             </View>
             <View style={styles.tableDivider} />
@@ -288,19 +550,94 @@ export default function ExamResultScreen() {
             {sectionsSummary.map((sec) => (
               <React.Fragment key={sec.subject}>
                 <View style={styles.tableDataRow}>
-                  <Text style={[styles.tableDataText, { flex: 2, fontWeight: '700', color: '#0F172A' }]}>
-                    {sec.subject}
-                  </Text>
-                  <Text style={[styles.tableDataText, { width: 36, textAlign: 'center' }]}>{sec.qs}</Text>
-                  <Text style={[styles.tableDataText, { width: 56, textAlign: 'center', color: '#059669' }]}>
-                    {sec.correct}
-                  </Text>
-                  <Text style={[styles.tableDataText, { width: 56, textAlign: 'center', color: '#DC2626' }]}>
-                    {sec.wrong}
-                  </Text>
-                  <Text style={[styles.tableDataText, { width: 56, textAlign: 'center', color: '#64748B' }]}>
-                    {sec.skipped}
-                  </Text>
+                  {/* Clickable Subject Name */}
+                  <TouchableOpacity
+                    style={{ flex: 2.2 }}
+                    onPress={() => {
+                      setSelectedSubjectFilter(selectedSubjectFilter === sec.name ? 'all' : sec.name);
+                      setStatusFilter('all');
+                      scrollToReview();
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.tableDataText,
+                        { fontWeight: '700', color: selectedSubjectFilter === sec.name ? '#0D9488' : '#0F172A' },
+                      ]}
+                    >
+                      {sec.name}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Clickable Total Questions */}
+                  <TouchableOpacity
+                    style={[styles.subjectNumberPill, { borderColor: '#E2E8F0', width: 40 }]}
+                    onPress={() => {
+                      setSelectedSubjectFilter(sec.name);
+                      setStatusFilter('all');
+                      scrollToReview();
+                    }}
+                  >
+                    <Text style={[styles.tableDataText, { fontWeight: '800' }]}>{sec.qs}</Text>
+                  </TouchableOpacity>
+
+                  {/* Clickable Answered */}
+                  <TouchableOpacity
+                    style={[styles.subjectNumberPill, { borderColor: '#99F6E4', backgroundColor: '#F0FDFA', width: 48 }]}
+                    onPress={() => {
+                      setSelectedSubjectFilter(sec.name);
+                      setStatusFilter('answered');
+                      scrollToReview();
+                    }}
+                  >
+                    <Text style={[styles.tableDataText, { fontWeight: '800', color: '#0D9488' }]}>
+                      {sec.answered}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Clickable Correct */}
+                  <TouchableOpacity
+                    style={[styles.subjectNumberPill, { borderColor: '#A7F3D0', backgroundColor: '#ECFDF5', width: 48 }]}
+                    onPress={() => {
+                      setSelectedSubjectFilter(sec.name);
+                      setStatusFilter('correct');
+                      scrollToReview();
+                    }}
+                  >
+                    <Text style={[styles.tableDataText, { fontWeight: '800', color: '#059669' }]}>
+                      {sec.correct}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Clickable Wrong */}
+                  <TouchableOpacity
+                    style={[styles.subjectNumberPill, { borderColor: '#FECACA', backgroundColor: '#FEF2F2', width: 48 }]}
+                    onPress={() => {
+                      setSelectedSubjectFilter(sec.name);
+                      setStatusFilter('wrong');
+                      scrollToReview();
+                    }}
+                  >
+                    <Text style={[styles.tableDataText, { fontWeight: '800', color: '#DC2626' }]}>
+                      {sec.wrong}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Clickable Skipped */}
+                  <TouchableOpacity
+                    style={[styles.subjectNumberPill, { borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', width: 48 }]}
+                    onPress={() => {
+                      setSelectedSubjectFilter(sec.name);
+                      setStatusFilter('unattempted');
+                      scrollToReview();
+                    }}
+                  >
+                    <Text style={[styles.tableDataText, { fontWeight: '800', color: '#4F46E5' }]}>
+                      {sec.skipped}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Accuracy */}
                   <Text style={[styles.tableDataText, { width: 44, textAlign: 'right', fontWeight: '700' }]}>
                     {sec.acc}
                   </Text>
@@ -364,26 +701,177 @@ export default function ExamResultScreen() {
         </View>
 
         {/* ========================================================================= */}
-        {/* REVIEW ANSWERS ACCORDION (SCREENSHOT 11) */}
+        {/* REVIEW ANSWERS ACCORDION (SCREENSHOT 11) WITH 4-STATUS FILTERING */}
         {/* ========================================================================= */}
-        <Text style={[styles.sectionHeading, { marginTop: 24 }]}>Review Answers</Text>
+        <View onLayout={(e) => setReviewYPos(e.nativeEvent.layout.y)}>
+          <Text style={[styles.sectionHeading, { marginTop: 24 }]}>Review Answers & Topic Explanations</Text>
+
+          {/* 4-STATUS FILTER CHIPS (ANSWERED FIRST AS REQUESTED) */}
+          <View style={styles.filterChipsRow}>
+            <TouchableOpacity
+              style={[styles.filterChip, statusFilter === 'all' && selectedSubjectFilter === 'all' && styles.filterChipActive]}
+              onPress={() => {
+                setStatusFilter('all');
+                setSelectedSubjectFilter('all');
+              }}
+            >
+              <Text style={[styles.filterChipText, statusFilter === 'all' && selectedSubjectFilter === 'all' && styles.filterChipTextActive]}>
+                All ({totalCount})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, statusFilter === 'answered' && styles.filterChipActiveAnswered]}
+              onPress={() => setStatusFilter('answered')}
+            >
+              <Text style={[styles.filterChipText, statusFilter === 'answered' && styles.filterChipTextActiveAnswered]}>
+                Answered (Attempted) ({realAnsweredCount})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, statusFilter === 'correct' && styles.filterChipActiveCorrect]}
+              onPress={() => setStatusFilter('correct')}
+            >
+              <Text style={[styles.filterChipText, statusFilter === 'correct' && styles.filterChipTextActiveCorrect]}>
+                Correct ({realCorrectCount})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, statusFilter === 'wrong' && styles.filterChipActiveWrong]}
+              onPress={() => setStatusFilter('wrong')}
+            >
+              <Text style={[styles.filterChipText, statusFilter === 'wrong' && styles.filterChipTextActiveWrong]}>
+                Wrong ({realWrongCount})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, statusFilter === 'unattempted' && styles.filterChipActiveUnattempted]}
+              onPress={() => setStatusFilter('unattempted')}
+            >
+              <Text style={[styles.filterChipText, statusFilter === 'unattempted' && styles.filterChipTextActiveUnattempted]}>
+                Skipped / Unattempted ({realUnattemptedCount})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Active Filter Notice Banner */}
+          {(statusFilter !== 'all' || selectedSubjectFilter !== 'all') && (
+            <View style={styles.activeFilterNoticeBox}>
+              <Ionicons name="filter" size={15} color="#0D9488" style={{ marginRight: 6 }} />
+              <Text style={styles.activeFilterNoticeText}>
+                Showing{' '}
+                <Text style={{ fontWeight: '800' }}>
+                  {filteredSolutions.length}{' '}
+                  {statusFilter === 'answered'
+                    ? 'ANSWERED (ATTEMPTED)'
+                    : statusFilter === 'unattempted'
+                    ? 'SKIPPED / UNATTEMPTED'
+                    : statusFilter.toUpperCase()}
+                </Text>
+                {selectedSubjectFilter !== 'all' ? ` in ${selectedSubjectFilter}` : ''} questions
+              </Text>
+              <TouchableOpacity
+                style={styles.clearFilterBtn}
+                onPress={() => {
+                  setStatusFilter('all');
+                  setSelectedSubjectFilter('all');
+                }}
+              >
+                <Text style={styles.clearFilterBtnText}>Show All ({totalCount}) ✕</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* QUESTION NUMBER QUICK-SELECT PALETTE */}
+          {filteredSolutions.length > 0 && (
+            <View style={styles.questionPaletteContainer}>
+              <View style={styles.questionPaletteHeader}>
+                <Ionicons name="apps-outline" size={13} color="#475569" style={{ marginRight: 5 }} />
+                <Text style={styles.questionPaletteLabel}>
+                  Question Numbers ({filteredSolutions.length} questions):
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.questionPaletteScroll}
+              >
+                {filteredSolutions.map((sol) => {
+                  const qKey = sol.question_id || `q-${sol.question_number}`;
+                  const isExpanded = Boolean(expandedQuestions[qKey]);
+                  const isCorrect = sol.is_correct;
+                  const isAttempted = Boolean(sol.user_selected_option_id);
+
+                  return (
+                    <TouchableOpacity
+                      key={qKey}
+                      style={[
+                        styles.paletteNumberBadge,
+                        isCorrect && styles.paletteNumberCorrect,
+                        !isCorrect && isAttempted && styles.paletteNumberWrong,
+                        !isAttempted && styles.paletteNumberSkipped,
+                        isExpanded && styles.paletteNumberSelected,
+                      ]}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setExpandedQuestions((prev) => ({
+                          ...prev,
+                          [qKey]: !prev[qKey],
+                        }));
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.paletteNumberText,
+                          isCorrect && styles.paletteTextCorrect,
+                          !isCorrect && isAttempted && styles.paletteTextWrong,
+                          !isAttempted && styles.paletteTextSkipped,
+                          isExpanded && { fontWeight: '900' },
+                        ]}
+                      >
+                        Q{sol.question_number}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+        </View>
 
         {loadingSolutions ? (
           <ActivityIndicator size="small" color="#0D9488" style={{ marginVertical: 20 }} />
+        ) : filteredSolutions.length === 0 ? (
+          <View style={styles.emptyFilteredBox}>
+            <Ionicons name="filter-circle-outline" size={36} color="#94A3B8" />
+            <Text style={styles.emptyFilteredText}>
+              No questions found for status "{statusFilter}".
+            </Text>
+            <TouchableOpacity
+              style={[styles.clearFilterBtn, { marginTop: 10 }]}
+              onPress={() => setStatusFilter('all')}
+            >
+              <Text style={styles.clearFilterBtnText}>Reset to All Questions</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={styles.reviewAccordionList}>
-            {solutions.map((sol, qIdx) => {
-              const isExpanded = Boolean(expandedQuestions[qIdx]);
+            {filteredSolutions.map((sol) => {
+              const qKey = sol.question_id || `q-${sol.question_number}`;
+              const isExpanded = Boolean(expandedQuestions[qKey]);
               const userSelected = sol.user_selected_option_id;
               const correctId = sol.correct_option_id;
 
               return (
-                <View key={sol.question_id} style={styles.reviewAccordionItem}>
+                <View key={qKey} style={styles.reviewAccordionItem}>
                   {/* Collapsed Header */}
                   <TouchableOpacity
                     style={styles.reviewHeaderRow}
                     activeOpacity={0.8}
-                    onPress={() => toggleExpand(qIdx)}
+                    onPress={() => toggleExpand(qKey)}
                   >
                     <View style={styles.reviewHeaderLeft}>
                       <View
@@ -1187,5 +1675,226 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     color: '#64748B',
     fontWeight: '500',
+  },
+  breakdownTitleRow: {
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  breakdownSubhint: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 10,
+  },
+  interactiveTableRow: {
+    flexDirection: 'row',
+    paddingVertical: 11,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  interactiveTableRowActive: {
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+  },
+  statusDotIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activeFilterPill: {
+    backgroundColor: '#0D9488',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 6,
+  },
+  activeFilterPillText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  filterChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  filterChip: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  filterChipActive: {
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
+  },
+  filterChipActiveCorrect: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  filterChipActiveWrong: {
+    backgroundColor: '#DC2626',
+    borderColor: '#DC2626',
+  },
+  filterChipActiveUnattempted: {
+    backgroundColor: '#4F46E5',
+    borderColor: '#4F46E5',
+  },
+  filterChipActiveAnswered: {
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  filterChipTextActiveCorrect: {
+    color: '#FFFFFF',
+  },
+  filterChipTextActiveWrong: {
+    color: '#FFFFFF',
+  },
+  filterChipTextActiveUnattempted: {
+    color: '#FFFFFF',
+  },
+  filterChipTextActiveAnswered: {
+    color: '#FFFFFF',
+  },
+  activeFilterNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 14,
+  },
+  activeFilterNoticeText: {
+    fontSize: 12,
+    color: '#0F766E',
+    flex: 1,
+  },
+  clearFilterBtn: {
+    backgroundColor: '#0D9488',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  clearFilterBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  emptyFilteredBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 24,
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  emptyFilteredText: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  numberCellPill: {
+    width: 48,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 3,
+  },
+  numberCellText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  subjectNumberPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginHorizontal: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  questionPaletteContainer: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 14,
+  },
+  questionPaletteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  questionPaletteLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  questionPaletteScroll: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  paletteNumberBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#CBD5E1',
+  },
+  paletteNumberCorrect: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC',
+  },
+  paletteNumberWrong: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+  },
+  paletteNumberSkipped: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#CBD5E1',
+  },
+  paletteNumberSelected: {
+    borderWidth: 2,
+    borderColor: '#0D9488',
+  },
+  paletteNumberText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  paletteTextCorrect: {
+    color: '#059669',
+  },
+  paletteTextWrong: {
+    color: '#DC2626',
+  },
+  paletteTextSkipped: {
+    color: '#64748B',
   },
 });

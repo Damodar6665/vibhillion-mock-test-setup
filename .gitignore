@@ -27,6 +27,7 @@ web-build/
 
 # Vite & Web builds
 build/
+dist_unified/
 coverage/
 
 # Supabase local

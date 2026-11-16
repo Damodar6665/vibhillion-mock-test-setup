@@ -39,7 +39,7 @@ export default function ExamSolutionScreen() {
   const answersJson = (params.answersJson as string) || '{}';
 
   const [solutions, setSolutions] = useState<QuestionAnalysis[]>([]);
-  const [filter, setFilter] = useState<'all' | 'correct' | 'wrong' | 'unattempted'>('all');
+  const [filter, setFilter] = useState<'all' | 'correct' | 'wrong' | 'unattempted' | 'answered'>('all');
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [bookmarkedMap, setBookmarkedMap] = useState<Record<string, boolean>>({});
@@ -280,6 +280,7 @@ export default function ExamSolutionScreen() {
     if (filter === 'correct' && !item.is_correct) return false;
     if (filter === 'wrong' && (!item.user_selected_option_id || item.is_correct)) return false;
     if (filter === 'unattempted' && item.user_selected_option_id) return false;
+    if (filter === 'answered' && !item.user_selected_option_id) return false;
     if (selectedTopic !== 'all' && item.topic !== selectedTopic) return false;
     return true;
   });
@@ -309,6 +310,15 @@ export default function ExamSolutionScreen() {
         >
           <Text style={[styles.filterText, filter === 'all' && styles.filterTextActive]}>
             All ({solutions.length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterPill, filter === 'answered' && styles.filterPillActive]}
+          onPress={() => setFilter('answered')}
+        >
+          <Text style={[styles.filterText, filter === 'answered' && styles.filterTextActive]}>
+            Answered ({solutions.filter((s) => Boolean(s.user_selected_option_id)).length})
           </Text>
         </TouchableOpacity>
 

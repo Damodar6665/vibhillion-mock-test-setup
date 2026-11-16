@@ -4,12 +4,15 @@
 // ==============================================================================
 
 import React, { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Layers, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Layers, CheckCircle2, XCircle, ArrowRight, BookOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { adminService } from '../services/adminService';
-import { Category } from '@vibhillion/shared';
+import { Category, Exam } from '@vibhillion/shared';
 
 export const CategoriesPage: React.FC = () => {
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -23,8 +26,9 @@ export const CategoriesPage: React.FC = () => {
 
   const loadCategories = () => {
     setLoading(true);
-    adminService.getCategories().then((data) => {
-      setCategories(data);
+    Promise.all([adminService.getCategories(), adminService.getExams()]).then(([catData, examData]) => {
+      setCategories(catData);
+      setExams(examData);
       setLoading(false);
     });
   };
@@ -111,53 +115,72 @@ export const CategoriesPage: React.FC = () => {
                   <th>Category Name</th>
                   <th>Slug</th>
                   <th>Description</th>
+                  <th>Exams in Category</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {categories.map((cat) => (
-                  <tr key={cat.id}>
-                    <td className="font-semibold text-slate-700">#{cat.display_order}</td>
-                    <td>
-                      <div className="flex items-center gap-2 font-bold text-slate-900">
-                        <Layers size={16} className="text-blue-500" />
-                        <span>{cat.name}</span>
-                      </div>
-                    </td>
-                    <td><span className="code-pill">{cat.slug}</span></td>
-                    <td className="text-sm text-slate-500 max-w-xs">{cat.description || '—'}</td>
-                    <td>
-                      {cat.is_active ? (
-                        <span className="badge badge-success flex items-center gap-1 w-max">
-                          <CheckCircle2 size={12} /> Active
-                        </span>
-                      ) : (
-                        <span className="badge badge-danger flex items-center gap-1 w-max">
-                          <XCircle size={12} /> Disabled
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-2">
+                {categories.map((cat) => {
+                  const catExamsCount = exams.filter((e) => e.category_id === cat.id).length;
+                  return (
+                    <tr key={cat.id}>
+                      <td className="font-semibold text-slate-700">#{cat.display_order}</td>
+                      <td>
                         <button
-                          className="btn-icon text-blue-600 hover:bg-blue-50"
-                          onClick={() => openEditModal(cat)}
-                          title="Edit"
+                          className="flex items-center gap-2 font-bold text-slate-900 hover:text-blue-600 text-left cursor-pointer group"
+                          onClick={() => navigate(`/exams?category_id=${cat.id}`)}
+                          title="Click to view & add exams under this category"
                         >
-                          <Edit2 size={15} />
+                          <Layers size={16} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                          <span className="underline-offset-2 group-hover:underline">{cat.name}</span>
                         </button>
+                      </td>
+                      <td><span className="code-pill">{cat.slug}</span></td>
+                      <td className="text-sm text-slate-500 max-w-xs">{cat.description || '—'}</td>
+                      <td>
                         <button
-                          className="btn-icon text-red-600 hover:bg-red-50"
-                          onClick={() => handleDelete(cat.id, cat.name)}
-                          title="Delete"
+                          className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200"
+                          onClick={() => navigate(`/exams?category_id=${cat.id}`)}
+                          title={`View & configure exams under ${cat.name}`}
                         >
-                          <Trash2 size={15} />
+                          <BookOpen size={13} className="text-blue-600" />
+                          <span>{catExamsCount} Exam{catExamsCount === 1 ? '' : 's'}</span>
+                          <ArrowRight size={12} className="text-blue-500" />
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>
+                        {cat.is_active ? (
+                          <span className="badge badge-success flex items-center gap-1 w-max">
+                            <CheckCircle2 size={12} /> Active
+                          </span>
+                        ) : (
+                          <span className="badge badge-danger flex items-center gap-1 w-max">
+                            <XCircle size={12} /> Disabled
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="btn-icon text-blue-600 hover:bg-blue-50"
+                            onClick={() => openEditModal(cat)}
+                            title="Edit"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            className="btn-icon text-red-600 hover:bg-red-50"
+                            onClick={() => handleDelete(cat.id, cat.name)}
+                            title="Delete"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

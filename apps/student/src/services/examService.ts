@@ -601,39 +601,110 @@ export const examService = {
    * Fetch active categories
    */
   async getCategories(): Promise<Category[]> {
-    if (!isSupabaseConfigured) return MOCK_CATEGORIES;
     try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('is_active', true)
-        .order('display_order', { ascending: true });
-
-      if (error || !data || data.length === 0) return MOCK_CATEGORIES;
-      return data as Category[];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch('http://localhost:5173/api/categories', { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          await AsyncStorage.setItem('@vibhillion_cached_categories', JSON.stringify(data));
+          return data;
+        }
+      }
     } catch {
-      return MOCK_CATEGORIES;
+      // offline / mock server not running
     }
+
+    try {
+      const cached = await AsyncStorage.getItem('@vibhillion_cached_categories');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('categories')
+          .select('*')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true });
+
+        if (!error && data && data.length > 0) return data as Category[];
+      } catch {}
+    }
+
+    return MOCK_CATEGORIES;
   },
 
   /**
    * Fetch exams by category
    */
   async getExamsByCategory(categoryId: string): Promise<Exam[]> {
-    if (!isSupabaseConfigured) return [MOCK_EXAM];
     try {
-      const { data, error } = await supabase
-        .from('exams')
-        .select('*, sections:exam_sections(*)')
-        .eq('category_id', categoryId)
-        .eq('status', 'published')
-        .order('created_at', { ascending: false });
-
-      if (error || !data || data.length === 0) return [MOCK_EXAM];
-      return data as Exam[];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2500);
+      const url = `http://localhost:5173/api/exams?category_id=${categoryId}`;
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          await AsyncStorage.setItem(`@vibhillion_cached_exams_${categoryId}`, JSON.stringify(data));
+          return data;
+        }
+      }
     } catch {
+      // offline
+    }
+
+    try {
+      const cached = await AsyncStorage.getItem(`@vibhillion_cached_exams_${categoryId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('exams')
+          .select('*, sections:exam_sections(*)')
+          .eq('category_id', categoryId)
+          .eq('status', 'published')
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) return data as Exam[];
+      } catch {}
+    }
+
+    if (MOCK_EXAM.category_id === categoryId) {
       return [MOCK_EXAM];
     }
+    return [];
+  },
+
+  /**
+   * Fetch all exams
+   */
+  async getAllExams(): Promise<Exam[]> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch('http://localhost:5173/api/exams', { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return data;
+        }
+      }
+    } catch {}
+    return [MOCK_EXAM];
   },
 
   /**
@@ -697,16 +768,18 @@ export const examService = {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 3000);
-      const url =
-        'http://localhost:5173/api/questions' +
-        (sectionId && sectionId !== 'all' ? `?section_id=${sectionId}` : '');
+      const queryParams = new URLSearchParams();
+      if (examId) queryParams.set('exam_id', examId);
+      if (sectionId && sectionId !== 'all') queryParams.set('section_id', sectionId);
+      const queryString = queryParams.toString();
+      const url = `http://localhost:5173/api/questions${queryString ? `?${queryString}` : ''}`;
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
           allQuestions = data;
-          await AsyncStorage.setItem('@vibhillion_cached_questions', JSON.stringify(data));
+          await AsyncStorage.setItem(`@vibhillion_cached_questions_${examId}`, JSON.stringify(data));
         }
       }
     } catch {

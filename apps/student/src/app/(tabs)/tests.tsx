@@ -19,7 +19,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { examService } from '@/services/examService';
-import { UserAttemptHistory, Exam } from '@vibhillion/shared';
+import { UserAttemptHistory, Exam, Category } from '@vibhillion/shared';
 
 type SubView = 'categories' | 'subexams' | 'papers';
 
@@ -32,21 +32,41 @@ interface SearchItem {
 }
 
 // Official Emblem Badges directly from the uploaded screenshots
-const CategoryEmblem: React.FC<{ type: 'upsc' | 'ssc' | 'appsc' | 'rrb' }> = ({ type }) => {
-  const sources = {
+const CategoryEmblem: React.FC<{ type: string }> = ({ type }) => {
+  const normalized = (type || '').toLowerCase();
+  const sources: Record<string, any> = {
     upsc: require('@/assets/images/emblems/upsc.png'),
     ssc: require('@/assets/images/emblems/ssc.png'),
     appsc: require('@/assets/images/emblems/appsc.png'),
     rrb: require('@/assets/images/emblems/rrb.png'),
   };
 
+  if (sources[normalized]) {
+    return (
+      <View style={styles.emblemWrapper}>
+        <Image
+          source={sources[normalized]}
+          style={styles.emblemImage}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.emblemWrapper}>
-      <Image
-        source={sources[type]}
-        style={styles.emblemImage}
-        resizeMode="contain"
-      />
+    <View
+      style={[
+        styles.emblemWrapper,
+        {
+          backgroundColor: '#F0FDFA',
+          borderWidth: 1,
+          borderColor: '#CCFBF1',
+          justifyContent: 'center',
+          alignItems: 'center',
+        },
+      ]}
+    >
+      <Ionicons name="school" size={24} color="#0D9488" />
     </View>
   );
 };
@@ -58,16 +78,24 @@ export default function TestsScreen() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [recentAttempts, setRecentAttempts] = useState<UserAttemptHistory[]>([]);
   const [exam, setExam] = useState<Exam | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [categoryExams, setCategoryExams] = useState<Exam[]>([]);
+  const [allExams, setAllExams] = useState<Exam[]>([]);
 
-  // Load live attempts and exam configuration
+  // Load live attempts, categories and exam configuration
   const loadData = async () => {
     try {
-      const [history, examDetails] = await Promise.all([
+      const [history, examDetails, cats, allEx] = await Promise.all([
         examService.getUserAttemptHistory(),
         examService.getExamDetails('e0000001-0000-0000-0000-000000000001'),
+        examService.getCategories(),
+        examService.getAllExams(),
       ]);
       setRecentAttempts(history);
       setExam(examDetails);
+      setCategories(cats);
+      setAllExams(allEx);
     } catch {
       // Keep fallbacks
     }
@@ -76,6 +104,27 @@ export default function TestsScreen() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleSelectCategory = async (cat: Category) => {
+    setSelectedCategory(cat);
+    try {
+      const examsInCat = await examService.getExamsByCategory(cat.id);
+      setCategoryExams(examsInCat);
+    } catch {
+      setCategoryExams([]);
+    }
+    setSubView('subexams');
+  };
+
+  const handleSelectExam = (selectedExam: Exam) => {
+    router.push({
+      pathname: '/exam/instructions',
+      params: {
+        examId: selectedExam.id,
+        paperTitle: selectedExam.title,
+      },
+    });
+  };
 
   // Handle Paper Selection -> Navigate to Instructions screen
   const handleSelectPaper = (paperTitle: string) => {
@@ -269,7 +318,9 @@ export default function TestsScreen() {
             <Ionicons name="book-outline" size={18} color="#0D9488" style={{ marginRight: 6 }} />
             <Text style={styles.sectionTitle}>Competitive Exams</Text>
           </View>
-          <Text style={styles.sectionBadgeText}>1 Category  |  39 Topics</Text>
+          <Text style={styles.sectionBadgeText}>
+            {categories.length} Categor{categories.length === 1 ? 'y' : 'ies'}  |  {allExams.length} Exams
+          </Text>
         </View>
 
         {/* RECENT TESTS HORIZONTAL LIST (ONLY SHOWS REAL ATTEMPTED EXAMS) */}
@@ -329,65 +380,87 @@ export default function TestsScreen() {
         </View>
 
         {/* ========================================================================= */}
-        {/* VIEW 1: CATEGORIES (ONLY SSC AS REQUESTED) */}
+        {/* VIEW 1: DYNAMIC CATEGORIES (SSC, UPSC, APPSC, RRB & CUSTOM) */}
         {/* ========================================================================= */}
         {subView === 'categories' && (
           <View style={styles.gridContainer}>
-            {/* SSC Category Card */}
-            <TouchableOpacity
-              style={styles.gridCard}
-              activeOpacity={0.85}
-              onPress={() => setSubView('subexams')}
-            >
-              <CategoryEmblem type="ssc" />
-              <View style={styles.gridCardText}>
-                <Text style={styles.gridCardTitle}>SSC</Text>
-                <Text style={styles.gridCardSub}>39 exam blocks</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-            </TouchableOpacity>
+            {categories.map((cat) => {
+              const examCount = allExams.filter((e) => e.category_id === cat.id).length;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={styles.gridCard}
+                  activeOpacity={0.85}
+                  onPress={() => handleSelectCategory(cat)}
+                >
+                  <CategoryEmblem type={cat.slug || cat.name} />
+                  <View style={styles.gridCardText}>
+                    <Text style={styles.gridCardTitle}>{cat.name}</Text>
+                    <Text style={styles.gridCardSub}>
+                      {examCount > 0 ? `${examCount} exam${examCount > 1 ? 's' : ''} available` : (cat.description || 'Competitive Exams')}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 2: SUB-EXAM LIST FOR SSC (ONLY SSC CGL PREVIOUS YEAR PAPERS) */}
+        {/* VIEW 2: DYNAMIC EXAMS FOR SELECTED CATEGORY */}
         {/* ========================================================================= */}
-        {subView === 'subexams' && (
+        {subView === 'subexams' && selectedCategory && (
           <View style={styles.subFlowContainer}>
             {/* Active Category Header Card */}
             <View style={styles.activeCategoryCard}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <CategoryEmblem type="ssc" />
+                <CategoryEmblem type={selectedCategory.slug || selectedCategory.name} />
                 <View style={{ marginLeft: 12 }}>
-                  <Text style={styles.activeCatTitle}>SSC</Text>
-                  <Text style={styles.activeCatSub}>39 exam blocks</Text>
+                  <Text style={styles.activeCatTitle}>{selectedCategory.name}</Text>
+                  <Text style={styles.activeCatSub}>
+                    {categoryExams.length} exam{categoryExams.length !== 1 ? 's' : ''} configured
+                  </Text>
                 </View>
               </View>
               <TouchableOpacity
                 style={styles.allGroupsBtn}
                 onPress={() => setSubView('categories')}
               >
-                <Text style={styles.allGroupsBtnText}>All groups</Text>
+                <Text style={styles.allGroupsBtnText}>All Categories</Text>
               </TouchableOpacity>
             </View>
 
             {/* Sub-exam title */}
-            <Text style={styles.chooseSubTitle}>Choose a sub-exam</Text>
+            <Text style={styles.chooseSubTitle}>Available Exams & Tests</Text>
 
-            {/* Only SSC CGL Previous Year Papers remains */}
-            <TouchableOpacity
-              style={styles.subExamCard}
-              activeOpacity={0.8}
-              onPress={() => setSubView('papers')}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <View>
-                  <Text style={styles.subExamTitle}>SSC CGL Previous Year Papers</Text>
-                  <Text style={styles.subExamCount}>20 mock tests</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+            {categoryExams.length === 0 ? (
+              <View style={styles.emptyRecentCard}>
+                <Ionicons name="information-circle-outline" size={22} color="#0D9488" style={{ marginRight: 8 }} />
+                <Text style={styles.emptyRecentText}>
+                  No exams created in this category yet. Create exams in the admin portal to practice here.
+                </Text>
               </View>
-            </TouchableOpacity>
+            ) : (
+              categoryExams.map((ex) => (
+                <TouchableOpacity
+                  key={ex.id}
+                  style={styles.subExamCard}
+                  activeOpacity={0.8}
+                  onPress={() => handleSelectExam(ex)}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={styles.subExamTitle}>{ex.title}</Text>
+                      <Text style={styles.subExamCount}>
+                        {ex.year ? `${ex.year} • ` : ''}{ex.session || 'Shift 1'} • {ex.total_questions || 100} Qs • {Math.round((ex.total_duration_seconds || 3600) / 60)} mins
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#0D9488" />
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         )}
 

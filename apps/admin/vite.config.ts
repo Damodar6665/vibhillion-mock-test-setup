@@ -90,15 +90,120 @@ function liveSyncApiPlugin(): Plugin {
           return res.end(JSON.stringify(store));
         }
 
+        // 1.1 CATEGORIES
+        if (pathname === '/api/categories' && req.method === 'GET') {
+          const cats = (store.categories || []).sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
+          return res.end(JSON.stringify(cats));
+        }
+        if (pathname === '/api/categories' && req.method === 'POST') {
+          const body = await parseBody(req);
+          const newCat = {
+            id: body.id || 'cat-' + Date.now(),
+            name: body.name || 'New Category',
+            slug: body.slug || (body.name || 'new-category').toLowerCase().replace(/[^a-z0-9]/g, '-'),
+            description: body.description || '',
+            icon_url: body.icon_url || 'award',
+            display_order: Number(body.display_order) || ((store.categories || []).length + 1),
+            is_active: body.is_active !== undefined ? Boolean(body.is_active) : true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          if (!store.categories) store.categories = [];
+          store.categories.push(newCat);
+          writeLiveStore(store);
+          return res.end(JSON.stringify(newCat));
+        }
+        if (pathname.startsWith('/api/categories/') && req.method === 'PUT') {
+          const catId = pathname.replace('/api/categories/', '');
+          const body = await parseBody(req);
+          if (!store.categories) store.categories = [];
+          const idx = store.categories.findIndex((c: any) => c.id === catId);
+          if (idx !== -1) {
+            store.categories[idx] = {
+              ...store.categories[idx],
+              ...body,
+              updated_at: new Date().toISOString(),
+            };
+            writeLiveStore(store);
+            return res.end(JSON.stringify(store.categories[idx]));
+          }
+          res.statusCode = 404;
+          return res.end(JSON.stringify({ error: 'Category not found' }));
+        }
+        if (pathname.startsWith('/api/categories/') && req.method === 'DELETE') {
+          const catId = pathname.replace('/api/categories/', '');
+          if (!store.categories) store.categories = [];
+          store.categories = store.categories.filter((c: any) => c.id !== catId);
+          writeLiveStore(store);
+          return res.end(JSON.stringify({ success: true }));
+        }
+
         // 2. EXAMS
         if (pathname === '/api/exams' && req.method === 'GET') {
-          return res.end(JSON.stringify(store.exam ? [store.exam] : []));
+          const catId = searchParams.get('category_id');
+          let examList = store.exams && store.exams.length > 0 ? store.exams : (store.exam ? [store.exam] : []);
+          if (catId) {
+            examList = examList.filter((e: any) => e.category_id === catId);
+          }
+          return res.end(JSON.stringify(examList));
+        }
+        if (pathname === '/api/exams' && req.method === 'POST') {
+          const body = await parseBody(req);
+          const newExam = {
+            id: body.id || 'exam-' + Date.now(),
+            category_id: body.category_id || store.categories?.[0]?.id || 'c0000001-0000-0000-0000-000000000001',
+            title: body.title || 'Untitled Exam',
+            slug: body.slug || (body.title || 'untitled-exam').toLowerCase().replace(/[^a-z0-9]/g, '-'),
+            description: body.description || '',
+            exam_type: body.exam_type || 'mock_test',
+            year: Number(body.year) || new Date().getFullYear(),
+            exam_date: body.exam_date || new Date().toISOString().split('T')[0],
+            session: body.session || 'Shift 1',
+            total_questions: Number(body.total_questions) || 100,
+            total_duration_seconds: Number(body.total_duration_seconds) || 3600,
+            total_marks: Number(body.total_marks) || 200,
+            positive_marks: Number(body.positive_marks) || 2.0,
+            negative_marks: Number(body.negative_marks) || 0.5,
+            status: body.status || 'published',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          if (!store.exams) store.exams = store.exam ? [store.exam] : [];
+          store.exams.push(newExam);
+          if (!store.exam) store.exam = newExam;
+          writeLiveStore(store);
+          return res.end(JSON.stringify(newExam));
         }
         if (pathname.startsWith('/api/exams/') && req.method === 'PUT') {
+          const examId = pathname.replace('/api/exams/', '');
           const body = await parseBody(req);
-          store.exam = { ...store.exam, ...body, updated_at: new Date().toISOString() };
+          if (!store.exams) store.exams = store.exam ? [store.exam] : [];
+          const idx = store.exams.findIndex((e: any) => e.id === examId);
+          if (idx !== -1) {
+            store.exams[idx] = { ...store.exams[idx], ...body, updated_at: new Date().toISOString() };
+            if (store.exam && store.exam.id === examId) {
+              store.exam = { ...store.exam, ...body, updated_at: new Date().toISOString() };
+            }
+            writeLiveStore(store);
+            return res.end(JSON.stringify(store.exams[idx]));
+          }
+          if (store.exam && store.exam.id === examId) {
+            store.exam = { ...store.exam, ...body, updated_at: new Date().toISOString() };
+            writeLiveStore(store);
+            return res.end(JSON.stringify(store.exam));
+          }
+          res.statusCode = 404;
+          return res.end(JSON.stringify({ error: 'Exam not found' }));
+        }
+        if (pathname.startsWith('/api/exams/') && req.method === 'DELETE') {
+          const examId = pathname.replace('/api/exams/', '');
+          if (!store.exams) store.exams = store.exam ? [store.exam] : [];
+          store.exams = store.exams.filter((e: any) => e.id !== examId);
+          if (store.exam && store.exam.id === examId) {
+            store.exam = store.exams[0] || null;
+          }
           writeLiveStore(store);
-          return res.end(JSON.stringify(store.exam));
+          return res.end(JSON.stringify({ success: true }));
         }
 
         // 3. SECTIONS
@@ -158,9 +263,17 @@ function liveSyncApiPlugin(): Plugin {
         // 4. QUESTIONS
         if (pathname === '/api/questions' && req.method === 'GET') {
           const sectionId = searchParams.get('section_id');
+          const examId = searchParams.get('exam_id');
           let list = store.questions || [];
-          if (sectionId) {
+          if (sectionId && sectionId !== 'all') {
             list = list.filter((q: any) => q.section_id === sectionId);
+          }
+          if (examId && examId !== 'all') {
+            list = list.filter((q: any) => {
+              if (q.exam_id === examId) return true;
+              const sec = (store.sections || []).find((s: any) => s.id === q.section_id);
+              return sec ? sec.exam_id === examId : (!q.exam_id && (examId === store.exam?.id || (store.exams && store.exams[0]?.id === examId)));
+            });
           }
           return res.end(JSON.stringify(list));
         }
@@ -237,6 +350,7 @@ function liveSyncApiPlugin(): Plugin {
 
             return {
               id: qId,
+              exam_id: item.exam_id || body.exam_id || (sections.find((s: any) => s.id === secId)?.exam_id) || store.exams?.[0]?.id || store.exam?.id,
               section_id: secId,
               question_number: Number(item.question_number) || (replaceMode ? (idx + 1) : (store.questions.length + idx + 1)),
               question_text: item.question_text || item.text || 'Untitled Question',
@@ -308,6 +422,7 @@ function liveSyncApiPlugin(): Plugin {
 
           const newQ = {
             id: qId,
+            exam_id: body.exam_id || (store.sections.find((s: any) => s.id === body.section_id)?.exam_id) || store.exams?.[0]?.id || store.exam?.id,
             section_id: body.section_id,
             question_number: Number(body.question_number) || (store.questions.length + 1),
             question_text: body.question_text,

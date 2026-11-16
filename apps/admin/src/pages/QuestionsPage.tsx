@@ -4,6 +4,7 @@
 // ==============================================================================
 
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Trash2,
@@ -18,11 +19,19 @@ import {
   FileSpreadsheet,
   AlertCircle,
   Layers,
+  GraduationCap,
+  BookOpen,
 } from 'lucide-react';
 import { adminService } from '../services/adminService';
-import { ExamSection } from '@vibhillion/shared';
+import { ExamSection, Exam, Category } from '@vibhillion/shared';
 
 export const QuestionsPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const examIdParam = searchParams.get('exam_id') || '';
+
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedExamId, setSelectedExamId] = useState<string>(examIdParam);
   const [sections, setSections] = useState<ExamSection[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string>('');
   const [questions, setQuestions] = useState<any[]>([]);
@@ -56,35 +65,57 @@ export const QuestionsPage: React.FC = () => {
   const [isUploadingJson, setIsUploadingJson] = useState(false);
   const [csvContent, setCsvContent] = useState('');
 
-  const loadData = async () => {
+  const loadData = async (targetExamId?: string) => {
     setLoading(true);
-    const secData = await adminService.getSections();
-    setSections(secData);
-    if (secData.length > 0) {
-      const secId = selectedSectionId || secData[0].id;
+    const [examsData, catsData, secData] = await Promise.all([
+      adminService.getExams(),
+      adminService.getCategories(),
+      adminService.getSections(),
+    ]);
+    setExams(examsData);
+    setCategories(catsData);
+
+    const activeExId = targetExamId || selectedExamId || examIdParam || (examsData.length > 0 ? examsData[0].id : '');
+    setSelectedExamId(activeExId);
+
+    // Filter sections for active exam or keep common sections
+    const examSections = secData.filter((s) => !s.exam_id || s.exam_id === activeExId);
+    const finalSections = examSections.length > 0 ? examSections : secData;
+    setSections(finalSections);
+
+    if (finalSections.length > 0) {
+      const secId = (selectedSectionId && finalSections.some(s => s.id === selectedSectionId)) ? selectedSectionId : finalSections[0].id;
       setSelectedSectionId(secId);
-      loadQuestions(secId);
+      await loadQuestions(secId, activeExId);
     } else {
       setLoading(false);
     }
   };
 
-  const loadQuestions = async (secId: string) => {
+  const loadQuestions = async (secId: string, exId?: string) => {
     setLoading(true);
-    const qData = await adminService.getQuestions(secId);
+    const activeExId = exId || selectedExamId;
+    const qData = await adminService.getQuestions(secId, activeExId);
     setQuestions(qData);
     setQuestionNumber(qData.length + 1);
     setLoading(false);
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(examIdParam);
+  }, [examIdParam]);
+
+  const handleSelectExam = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const exId = e.target.value;
+    setSelectedExamId(exId);
+    setSearchParams(exId ? { exam_id: exId } : {});
+    loadData(exId);
+  };
 
   const handleSelectSection = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const secId = e.target.value;
     setSelectedSectionId(secId);
-    loadQuestions(secId);
+    loadQuestions(secId, selectedExamId);
   };
 
   const handleOptionTextChange = (index: number, value: string) => {
@@ -187,6 +218,7 @@ export const QuestionsPage: React.FC = () => {
       });
     } else {
       await adminService.createQuestion({
+        exam_id: selectedExamId,
         section_id: selectedSectionId,
         question_number: Number(questionNumber),
         question_text: questionText,
@@ -205,13 +237,13 @@ export const QuestionsPage: React.FC = () => {
 
     setIsModalOpen(false);
     setEditingQuestion(null);
-    loadQuestions(selectedSectionId);
+    loadQuestions(selectedSectionId, selectedExamId);
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this question?')) {
       await adminService.deleteQuestion(id);
-      loadQuestions(selectedSectionId);
+      loadQuestions(selectedSectionId, selectedExamId);
     }
   };
 
@@ -304,20 +336,26 @@ export const QuestionsPage: React.FC = () => {
       }
 
       const res = await adminService.bulkUploadQuestions({
-        questions: questionsList,
+        questions: questionsList.map((q: any) => ({
+          ...q,
+          exam_id: q.exam_id || selectedExamId,
+        })),
         replace: jsonReplace,
       });
 
       setIsUploadingJson(false);
       setIsJsonModalOpen(false);
       setJsonContent('');
-      await loadData();
+      await loadData(selectedExamId);
       alert(`Bulk Upload Success! Successfully imported ${res.uploaded_count} questions. Total questions in bank: ${res.total_questions}. Synced live across frontend and backend.`);
     } catch (err: any) {
       setIsUploadingJson(false);
       alert(`JSON Upload Error: ${err.message}`);
     }
   };
+
+  const activeExam = exams.find((e) => e.id === selectedExamId) || exams[0];
+  const activeCategory = activeExam ? categories.find((c) => c.id === activeExam.category_id) : null;
 
   return (
     <div className="page-wrapper">
@@ -351,6 +389,50 @@ export const QuestionsPage: React.FC = () => {
             <Plus size={16} />
             <span>Add Question</span>
           </button>
+        </div>
+      </div>
+
+      {/* Target Exam Selector Bar */}
+      <div className="content-card p-4 mb-4 bg-gradient-to-r from-teal-50/70 via-indigo-50/40 to-white border border-teal-200">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-teal-800 font-bold text-sm">
+              <GraduationCap size={18} className="text-teal-700" />
+              <span>Target Exam:</span>
+            </div>
+            <select
+              className="form-input font-bold text-slate-800 bg-white border-teal-300 min-w-[280px]"
+              value={selectedExamId}
+              onChange={handleSelectExam}
+            >
+              {exams.map((ex) => {
+                const cat = categories.find((c) => c.id === ex.category_id);
+                return (
+                  <option key={ex.id} value={ex.id}>
+                    [{cat?.name || 'General'}] {ex.title} ({ex.year || 2025})
+                  </option>
+                );
+              })}
+            </select>
+
+            {activeExam && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs bg-teal-100 text-teal-800 font-bold px-2.5 py-1 rounded-full border border-teal-200">
+                  Category: {activeCategory?.name || 'General'}
+                </span>
+                <span className="text-xs bg-slate-100 text-slate-700 font-medium px-2 py-1 rounded border border-slate-200">
+                  {activeExam.session || 'Shift 1'} • {activeExam.total_questions || 100} Questions Expected
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+            <span>Direct Question Assignment:</span>
+            <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">
+              Active Exam Linked
+            </span>
+          </div>
         </div>
       </div>
 
@@ -608,6 +690,19 @@ export const QuestionsPage: React.FC = () => {
             </div>
             <form onSubmit={handleSaveQuestion}>
               <div className="modal-body space-y-4">
+                <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-teal-900">
+                    <GraduationCap size={15} className="text-teal-700" />
+                    <span>Target Exam:</span>
+                    <strong className="text-teal-950 font-bold">
+                      {activeExam?.title || 'Selected Exam'}
+                    </strong>
+                  </div>
+                  <span className="bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded border border-teal-200">
+                    Section: {sections.find((s) => s.id === selectedSectionId)?.name || 'Default Section'}
+                  </span>
+                </div>
+
                 <div className="grid-2-cols gap-4">
                   <div className="form-group">
                     <label className="form-label">Question Number *</label>

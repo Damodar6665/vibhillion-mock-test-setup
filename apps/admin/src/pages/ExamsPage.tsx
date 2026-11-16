@@ -3,7 +3,7 @@
 // File: apps/admin/src/pages/ExamsPage.tsx
 // ==============================================================================
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Plus,
   Edit2,
@@ -11,13 +11,23 @@ import {
   FileSpreadsheet,
   CheckCircle,
   Eye,
+  Layers,
+  HelpCircle,
+  ArrowRight,
+  BookOpen,
 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { adminService } from '../services/adminService';
 import { Exam, Category } from '@vibhillion/shared';
 
 export const ExamsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialCategory = searchParams.get('category_id') || 'all';
+
   const [exams, setExams] = useState<Exam[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>(initialCategory);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
@@ -43,7 +53,8 @@ export const ExamsPage: React.FC = () => {
     Promise.all([adminService.getExams(), adminService.getCategories()]).then(([examData, catData]) => {
       setExams(examData);
       setCategories(catData);
-      if (catData.length > 0 && !categoryId) setCategoryId(catData[0].id);
+      const activeCat = selectedCategoryFilter !== 'all' ? selectedCategoryFilter : (catData[0]?.id || '');
+      if (!categoryId) setCategoryId(activeCat);
       setLoading(false);
     });
   };
@@ -52,8 +63,23 @@ export const ExamsPage: React.FC = () => {
     loadData();
   }, []);
 
+  const categoryMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    categories.forEach((c) => {
+      map[c.id] = c.name;
+    });
+    return map;
+  }, [categories]);
+
+  const filteredExams = useMemo(() => {
+    if (selectedCategoryFilter === 'all') return exams;
+    return exams.filter((e) => e.category_id === selectedCategoryFilter);
+  }, [exams, selectedCategoryFilter]);
+
   const openCreateModal = () => {
     setEditingExam(null);
+    const activeCat = selectedCategoryFilter !== 'all' ? selectedCategoryFilter : (categories[0]?.id || '');
+    setCategoryId(activeCat);
     setTitle('');
     setSlug('');
     setExamType('previous_year_paper');
@@ -152,15 +178,71 @@ export const ExamsPage: React.FC = () => {
         </button>
       </div>
 
+      {/* CATEGORY FILTER PILLS */}
+      <div className="content-card mb-4 p-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 flex-1">
+            <button
+              className={`filter-pill-btn flex items-center gap-1.5 ${selectedCategoryFilter === 'all' ? 'active-teal font-bold' : ''}`}
+              onClick={() => {
+                setSelectedCategoryFilter('all');
+                setSearchParams({});
+              }}
+            >
+              <Layers size={13} />
+              <span>All Categories ({exams.length})</span>
+            </button>
+            {categories.map((c) => {
+              const count = exams.filter((e) => e.category_id === c.id).length;
+              const isActive = selectedCategoryFilter === c.id;
+              return (
+                <button
+                  key={c.id}
+                  className={`filter-pill-btn flex items-center gap-1.5 ${isActive ? 'active-teal font-bold' : ''}`}
+                  onClick={() => {
+                    setSelectedCategoryFilter(c.id);
+                    setSearchParams({ category_id: c.id });
+                  }}
+                >
+                  <span>{c.name}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isActive ? 'bg-white text-teal-800' : 'bg-slate-200 text-slate-700'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            className="btn btn-secondary text-xs flex items-center gap-1 hover:text-blue-600"
+            onClick={() => navigate('/categories')}
+            title="Configure Categories"
+          >
+            <Layers size={13} />
+            <span>Manage Categories</span>
+          </button>
+        </div>
+      </div>
+
       <div className="content-card">
         {loading ? (
           <div className="p-6 text-center text-slate-500">Loading exams catalog...</div>
+        ) : filteredExams.length === 0 ? (
+          <div className="p-12 text-center text-slate-500">
+            <BookOpen size={32} className="mx-auto mb-2 text-slate-400" />
+            <h3 className="font-bold text-slate-800 text-sm">No exams found in this category</h3>
+            <p className="text-xs text-slate-500 mt-1 mb-4">Click below to create your first exam under this category.</p>
+            <button className="btn btn-primary text-xs mx-auto" onClick={openCreateModal}>
+              <Plus size={14} />
+              <span>Create Exam</span>
+            </button>
+          </div>
         ) : (
           <div className="table-responsive">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Exam Title</th>
+                  <th>Exam Title & Category</th>
                   <th>Type & Year</th>
                   <th>Questions & Time</th>
                   <th>Marks Pattern</th>
@@ -169,67 +251,89 @@ export const ExamsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {exams.map((exam) => (
-                  <tr key={exam.id}>
-                    <td>
-                      <div className="font-bold text-slate-900">{exam.title}</div>
-                      <div className="text-xs text-slate-500">{exam.slug}</div>
-                    </td>
-                    <td>
-                      <span className="badge badge-info">{exam.exam_type.replace(/_/g, ' ')}</span>
-                      <div className="text-xs text-slate-600 mt-1">{exam.year} • {exam.session}</div>
-                    </td>
-                    <td>
-                      <div className="font-semibold text-slate-800">{exam.total_questions} Questions</div>
-                      <div className="text-xs text-slate-500">
-                        {Math.round(exam.total_duration_seconds / 60)} Minutes
-                      </div>
-                    </td>
-                    <td>
-                      <span className="text-sm font-semibold text-emerald-600">+{exam.positive_marks}</span>
-                      <span className="text-xs text-slate-400"> / </span>
-                      <span className="text-sm font-semibold text-red-500">−{exam.negative_marks}</span>
-                      <div className="text-xs text-slate-500">Max: {exam.total_marks}</div>
-                    </td>
-                    <td>
-                      {exam.status === 'published' ? (
+                {filteredExams.map((exam) => {
+                  const catName = categoryMap[exam.category_id] || 'General';
+                  return (
+                    <tr key={exam.id}>
+                      <td>
                         <button
-                          className="badge badge-success cursor-pointer"
-                          onClick={() => handleTogglePublish(exam)}
-                          title="Click to switch to Draft"
+                          onClick={() => navigate(`/questions?exam_id=${exam.id}`)}
+                          className="text-left cursor-pointer group block"
+                          title="Click to view & add questions for this exam"
                         >
-                          ● Published
+                          <div className="font-bold text-slate-900 group-hover:text-blue-600 underline-offset-2 group-hover:underline">
+                            {exam.title}
+                          </div>
+                          <div className="text-xs text-slate-400 font-normal">{exam.slug}</div>
                         </button>
-                      ) : (
-                        <button
-                          className="badge badge-warning cursor-pointer"
-                          onClick={() => handleTogglePublish(exam)}
-                          title="Click to Publish"
-                        >
-                          ○ Draft
-                        </button>
-                      )}
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="btn-icon text-blue-600 hover:bg-blue-50"
-                          onClick={() => openEditModal(exam)}
-                          title="Edit"
-                        >
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          className="btn-icon text-red-600 hover:bg-red-50"
-                          onClick={() => handleDelete(exam.id, exam.title)}
-                          title="Delete"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        <span className="text-[11px] font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200 mt-1.5 inline-block">
+                          Category: {catName}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="badge badge-info">{exam.exam_type.replace(/_/g, ' ')}</span>
+                        <div className="text-xs text-slate-600 mt-1">{exam.year} • {exam.session}</div>
+                      </td>
+                      <td>
+                        <div className="font-semibold text-slate-800">{exam.total_questions} Questions</div>
+                        <div className="text-xs text-slate-500">
+                          {Math.round(exam.total_duration_seconds / 60)} Minutes
+                        </div>
+                      </td>
+                      <td>
+                        <span className="text-sm font-semibold text-emerald-600">+{exam.positive_marks}</span>
+                        <span className="text-xs text-slate-400"> / </span>
+                        <span className="text-sm font-semibold text-red-500">−{exam.negative_marks}</span>
+                        <div className="text-xs text-slate-500">Max: {exam.total_marks}</div>
+                      </td>
+                      <td>
+                        {exam.status === 'published' ? (
+                          <button
+                            className="badge badge-success cursor-pointer"
+                            onClick={() => handleTogglePublish(exam)}
+                            title="Click to switch to Draft"
+                          >
+                            ● Published
+                          </button>
+                        ) : (
+                          <button
+                            className="badge badge-warning cursor-pointer"
+                            onClick={() => handleTogglePublish(exam)}
+                            title="Click to Publish"
+                          >
+                            ○ Draft
+                          </button>
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="btn btn-primary btn-sm flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white text-xs px-2.5 py-1"
+                            onClick={() => navigate(`/questions?exam_id=${exam.id}`)}
+                            title="Add & Manage Questions for this Exam"
+                          >
+                            <Plus size={13} />
+                            <span>Add Questions</span>
+                          </button>
+                          <button
+                            className="btn-icon text-blue-600 hover:bg-blue-50"
+                            onClick={() => openEditModal(exam)}
+                            title="Edit"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            className="btn-icon text-red-600 hover:bg-red-50"
+                            onClick={() => handleDelete(exam.id, exam.title)}
+                            title="Delete"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

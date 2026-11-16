@@ -105,16 +105,31 @@ export const adminService = {
   // CATEGORIES
   // ----------------------------------------------------------------------------
   async getCategories(): Promise<Category[]> {
-    if (!isSupabaseConfigured) return [...MOCK_CATEGORIES];
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .order('display_order', { ascending: true });
-    if (error || !data) return [...MOCK_CATEGORIES];
-    return data as Category[];
+    const live = await apiCall<Category[]>('/api/categories');
+    if (live && Array.isArray(live) && live.length > 0) {
+      MOCK_CATEGORIES = live;
+      return live;
+    }
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('display_order', { ascending: true });
+      if (!error && data && data.length > 0) return data as Category[];
+    }
+    return [...MOCK_CATEGORIES];
   },
 
   async createCategory(cat: Partial<Category>): Promise<Category> {
+    const apiRes = await apiCall<Category>('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cat),
+    });
+    if (apiRes) {
+      MOCK_CATEGORIES.push(apiRes);
+      return apiRes;
+    }
     if (!isSupabaseConfigured) {
       const newCat: Category = {
         id: 'cat-' + Date.now(),
@@ -136,6 +151,16 @@ export const adminService = {
   },
 
   async updateCategory(id: string, updates: Partial<Category>): Promise<Category> {
+    const apiRes = await apiCall<Category>(`/api/categories/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (apiRes) {
+      const idx = MOCK_CATEGORIES.findIndex((c) => c.id === id);
+      if (idx !== -1) MOCK_CATEGORIES[idx] = apiRes;
+      return apiRes;
+    }
     if (!isSupabaseConfigured) {
       const idx = MOCK_CATEGORIES.findIndex((c) => c.id === id);
       if (idx !== -1) {
@@ -150,12 +175,12 @@ export const adminService = {
   },
 
   async deleteCategory(id: string): Promise<void> {
-    if (!isSupabaseConfigured) {
-      MOCK_CATEGORIES = MOCK_CATEGORIES.filter((c) => c.id !== id);
-      return;
+    await apiCall(`/api/categories/${id}`, { method: 'DELETE' });
+    MOCK_CATEGORIES = MOCK_CATEGORIES.filter((c) => c.id !== id);
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.from('categories').delete().eq('id', id);
+      if (error) throw error;
     }
-    const { error } = await supabase.from('categories').delete().eq('id', id);
-    if (error) throw error;
   },
 
   // ----------------------------------------------------------------------------
@@ -313,17 +338,24 @@ export const adminService = {
   // ----------------------------------------------------------------------------
   // QUESTIONS & ANSWERS
   // ----------------------------------------------------------------------------
-  async getQuestions(sectionId?: string): Promise<any[]> {
-    const live = await apiCall<any[]>(`/api/questions${sectionId ? '?section_id=' + sectionId : ''}`);
+  async getQuestions(sectionId?: string, examId?: string): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (sectionId && sectionId !== 'all') params.append('section_id', sectionId);
+    if (examId && examId !== 'all') params.append('exam_id', examId);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const live = await apiCall<any[]>(`/api/questions${qs}`);
     if (live && Array.isArray(live) && live.length > 0) {
       return live;
     }
-    if (sectionId) return MOCK_QUESTIONS.filter((q) => q.section_id === sectionId);
-    return [...MOCK_QUESTIONS];
+    let filtered = [...MOCK_QUESTIONS];
+    if (sectionId && sectionId !== 'all') filtered = filtered.filter((q) => q.section_id === sectionId);
+    if (examId && examId !== 'all') filtered = filtered.filter((q) => q.exam_id === examId);
+    return filtered;
   },
 
   async createQuestion(payload: {
     section_id: string;
+    exam_id?: string;
     question_number: number;
     question_text: string;
     difficulty: string;
@@ -360,6 +392,7 @@ export const adminService = {
 
     const newQ = apiRes || {
       id: qId,
+      exam_id: payload.exam_id,
       section_id: payload.section_id,
       question_number: Number(payload.question_number),
       question_text: payload.question_text,

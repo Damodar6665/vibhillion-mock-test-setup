@@ -13,7 +13,9 @@
     "admin": "npm run --prefix apps/admin dev",
     "admin:build": "npm run --prefix apps/admin build",
     "build:shared": "npm run --prefix packages/shared build",
-    "build": "npm run --prefix apps/admin build",
+    "build:admin": "npm run --prefix apps/admin build",
+    "build:unified": "node scripts/build-unified.js",
+    "build": "node scripts/build-unified.js",
     "test": "npm run --prefix packages/shared test"
   },
   "devDependencies": {
