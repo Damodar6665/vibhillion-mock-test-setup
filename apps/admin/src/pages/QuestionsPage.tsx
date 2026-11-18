@@ -3,7 +3,7 @@
 // File: apps/admin/src/pages/QuestionsPage.tsx
 // ==============================================================================
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -21,13 +21,25 @@ import {
   Layers,
   GraduationCap,
   BookOpen,
+  SplitSquareHorizontal,
+  Save,
+  Sparkles,
+  ShieldAlert,
 } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import { ExamSection, Exam, Category } from '@vibhillion/shared';
+import {
+  divideTotalAcrossSections,
+  getDefaultSectionNames,
+  distributeQuestionsAcrossSections,
+  SectionAllocationConfig,
+  DistributionMode,
+} from '../utils/questionDistributor';
 
 export const QuestionsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const examIdParam = searchParams.get('exam_id') || '';
+  const openBulkParam = searchParams.get('open_bulk') === '1';
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -35,12 +47,19 @@ export const QuestionsPage: React.FC = () => {
   const [sections, setSections] = useState<ExamSection[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string>('');
   const [questions, setQuestions] = useState<any[]>([]);
+  const [allExamQuestions, setAllExamQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Exam & Section Question Allocation Config States
+  const [examTotalLimit, setExamTotalLimit] = useState<number>(100);
+  const [sectionCountInput, setSectionCountInput] = useState<number>(4);
+  const [sectionAllocations, setSectionAllocations] = useState<SectionAllocationConfig[]>([]);
+  const [savingAllocation, setSavingAllocation] = useState<boolean>(false);
+  const [allocationFeedback, setAllocationFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
-  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<any | null>(null);
 
   // Form states
@@ -53,7 +72,7 @@ export const QuestionsPage: React.FC = () => {
   const [marks, setMarks] = useState(2.0);
   const [negativeMarks, setNegativeMarks] = useState(0.5);
   const [explanation, setExplanation] = useState('');
-  
+
   // 4 Options: text and optional image
   const [options, setOptions] = useState<string[]>(['', '', '', '']);
   const [optionImages, setOptionImages] = useState<string[]>(['', '', '', '']);
@@ -62,15 +81,49 @@ export const QuestionsPage: React.FC = () => {
   // Bulk JSON State
   const [jsonContent, setJsonContent] = useState('');
   const [jsonReplace, setJsonReplace] = useState(false);
+  const [distributionMode, setDistributionMode] = useState<DistributionMode>('content_and_count');
   const [isUploadingJson, setIsUploadingJson] = useState(false);
-  const [csvContent, setCsvContent] = useState('');
+
+  const syncAllocationStateFromData = (examObj: Exam | undefined, examSections: ExamSection[]) => {
+    const targetLimit = Math.max(1, Number(examObj?.total_questions) || 100);
+    setExamTotalLimit(targetLimit);
+
+    if (examSections.length > 0) {
+      setSectionCountInput(examSections.length);
+      setSectionAllocations(
+        examSections.map((s, idx) => ({
+          id: s.id,
+          name: s.name,
+          display_order: s.display_order || idx + 1,
+          question_count: Number(s.question_count) || 0,
+          duration_seconds: Number(s.duration_seconds) || 900,
+          marks_per_correct: Number(s.marks_per_correct) || Number(examObj?.positive_marks) || 2.0,
+          negative_marks_per_wrong: Number(s.negative_marks_per_wrong) || Number(examObj?.negative_marks) || 0.5,
+        }))
+      );
+    } else {
+      const defaultCounts = divideTotalAcrossSections(targetLimit, 4);
+      const defaultNames = getDefaultSectionNames(4);
+      setSectionCountInput(4);
+      setSectionAllocations(
+        defaultCounts.map((cnt, idx) => ({
+          id: `sec-new-${idx + 1}`,
+          name: defaultNames[idx],
+          display_order: idx + 1,
+          question_count: cnt,
+          duration_seconds: Math.max(60, Math.round((Number(examObj?.total_duration_seconds) || 3600) / 4)),
+          marks_per_correct: Number(examObj?.positive_marks) || 2.0,
+          negative_marks_per_wrong: Number(examObj?.negative_marks) || 0.5,
+        }))
+      );
+    }
+  };
 
   const loadData = async (targetExamId?: string) => {
     setLoading(true);
-    const [examsData, catsData, secData] = await Promise.all([
+    const [examsData, catsData] = await Promise.all([
       adminService.getExams(),
       adminService.getCategories(),
-      adminService.getSections(),
     ]);
     setExams(examsData);
     setCategories(catsData);
@@ -78,26 +131,43 @@ export const QuestionsPage: React.FC = () => {
     const activeExId = targetExamId || selectedExamId || examIdParam || (examsData.length > 0 ? examsData[0].id : '');
     setSelectedExamId(activeExId);
 
-    // Filter sections for active exam or keep common sections
-    const examSections = secData.filter((s) => !s.exam_id || s.exam_id === activeExId);
-    const finalSections = examSections.length > 0 ? examSections : secData;
-    setSections(finalSections);
+    const activeExamObj = examsData.find((e) => e.id === activeExId) || examsData[0];
 
-    if (finalSections.length > 0) {
-      const secId = (selectedSectionId && finalSections.some(s => s.id === selectedSectionId)) ? selectedSectionId : finalSections[0].id;
+    // Load exam-specific sections and ALL questions for this exam
+    const [examSecs, allQsForExam] = await Promise.all([
+      adminService.getSections(activeExId),
+      adminService.getQuestions('all', activeExId),
+    ]);
+
+    setSections(examSecs);
+    setAllExamQuestions(allQsForExam);
+    syncAllocationStateFromData(activeExamObj, examSecs);
+
+    if (examSecs.length > 0) {
+      const secId =
+        selectedSectionId && examSecs.some((s) => s.id === selectedSectionId)
+          ? selectedSectionId
+          : examSecs[0].id;
       setSelectedSectionId(secId);
-      await loadQuestions(secId, activeExId);
+      const secQs = allQsForExam.filter((q) => q.section_id === secId);
+      setQuestions(secQs);
+      setQuestionNumber(allQsForExam.length + 1);
     } else {
-      setLoading(false);
+      setSelectedSectionId('');
+      setQuestions(allQsForExam);
+      setQuestionNumber(allQsForExam.length + 1);
     }
+    setLoading(false);
   };
 
   const loadQuestions = async (secId: string, exId?: string) => {
     setLoading(true);
     const activeExId = exId || selectedExamId;
-    const qData = await adminService.getQuestions(secId, activeExId);
-    setQuestions(qData);
-    setQuestionNumber(qData.length + 1);
+    const allQsForExam = await adminService.getQuestions('all', activeExId);
+    setAllExamQuestions(allQsForExam);
+    const secQs = secId && secId !== 'all' ? allQsForExam.filter((q) => q.section_id === secId) : allQsForExam;
+    setQuestions(secQs);
+    setQuestionNumber(allQsForExam.length + 1);
     setLoading(false);
   };
 
@@ -105,9 +175,17 @@ export const QuestionsPage: React.FC = () => {
     loadData(examIdParam);
   }, [examIdParam]);
 
+  useEffect(() => {
+    if (openBulkParam) {
+      setIsJsonModalOpen(true);
+    }
+  }, [openBulkParam]);
+
   const handleSelectExam = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const exId = e.target.value;
     setSelectedExamId(exId);
+    setSelectedSectionId('');
+    setAllocationFeedback(null);
     setSearchParams(exId ? { exam_id: exId } : {});
     loadData(exId);
   };
@@ -115,7 +193,121 @@ export const QuestionsPage: React.FC = () => {
   const handleSelectSection = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const secId = e.target.value;
     setSelectedSectionId(secId);
-    loadQuestions(secId, selectedExamId);
+    const secQs = secId === 'all' ? allExamQuestions : allExamQuestions.filter((q) => q.section_id === secId);
+    setQuestions(secQs);
+  };
+
+  // Auto-divide examTotalLimit across sectionCountInput
+  const handleAutoDivideSections = (targetTotal = examTotalLimit, targetSecCount = sectionCountInput) => {
+    const safeSecCount = Math.max(1, Math.min(20, Math.floor(Number(targetSecCount) || 1)));
+    const safeTotal = Math.max(1, Math.floor(Number(targetTotal) || 1));
+    const counts = divideTotalAcrossSections(safeTotal, safeSecCount);
+    const defaultNames = getDefaultSectionNames(safeSecCount);
+    const currentExamObj = exams.find((e) => e.id === selectedExamId);
+    const perSecDur = Math.max(60, Math.round((Number(currentExamObj?.total_duration_seconds) || 3600) / safeSecCount));
+
+    setSectionCountInput(safeSecCount);
+    setSectionAllocations((prev) =>
+      counts.map((cnt, idx) => ({
+        id: prev[idx]?.id || `sec-${selectedExamId}-${idx + 1}`,
+        name: prev[idx]?.name || defaultNames[idx],
+        display_order: idx + 1,
+        question_count: cnt,
+        duration_seconds: prev[idx]?.duration_seconds || perSecDur,
+        marks_per_correct: prev[idx]?.marks_per_correct || Number(currentExamObj?.positive_marks) || 2.0,
+        negative_marks_per_wrong: prev[idx]?.negative_marks_per_wrong || Number(currentExamObj?.negative_marks) || 0.5,
+      }))
+    );
+  };
+
+  const handleAllocationFieldChange = (
+    idx: number,
+    field: 'name' | 'question_count',
+    value: string | number
+  ) => {
+    setSectionAllocations((prev) =>
+      prev.map((sec, i) =>
+        i === idx
+          ? {
+              ...sec,
+              [field]: field === 'question_count' ? Math.max(0, Math.floor(Number(value) || 0)) : value,
+            }
+          : sec
+      )
+    );
+  };
+
+  const allocatedSectionSum = useMemo(
+    () => sectionAllocations.reduce((sum, s) => sum + (Number(s.question_count) || 0), 0),
+    [sectionAllocations]
+  );
+
+  const handleSaveExamAndSectionCounts = async (silent = false): Promise<ExamSection[] | null> => {
+    if (!selectedExamId) return null;
+    if (examTotalLimit <= 0) {
+      alert('Whole Exam Question Count must be greater than 0.');
+      return null;
+    }
+    if (allocatedSectionSum !== Number(examTotalLimit)) {
+      const msg = `Section-wise sum (${allocatedSectionSum}) must equal Whole Exam Question Count (${examTotalLimit}). Click "Auto-Divide" or adjust section counts.`;
+      if (!silent) {
+        setAllocationFeedback({ type: 'error', text: msg });
+      }
+      alert(msg);
+      return null;
+    }
+
+    try {
+      setSavingAllocation(true);
+      const syncRes = await adminService.syncExamSections(
+        selectedExamId,
+        Number(examTotalLimit),
+        sectionAllocations.map((s, idx) => ({
+          id: s.id.startsWith('sec-new-') ? undefined : s.id,
+          name: s.name.trim() || `Section ${idx + 1}`,
+          display_order: idx + 1,
+          question_count: Number(s.question_count) || 0,
+          duration_seconds: Number(s.duration_seconds) || 900,
+          marks_per_correct: Number(s.marks_per_correct) || 2.0,
+          negative_marks_per_wrong: Number(s.negative_marks_per_wrong) || 0.5,
+        }))
+      );
+
+      setSections(syncRes.sections);
+      setSectionAllocations(
+        syncRes.sections.map((s, idx) => ({
+          id: s.id,
+          name: s.name,
+          display_order: s.display_order || idx + 1,
+          question_count: Number(s.question_count) || 0,
+          duration_seconds: Number(s.duration_seconds) || 900,
+          marks_per_correct: Number(s.marks_per_correct) || 2.0,
+          negative_marks_per_wrong: Number(s.negative_marks_per_wrong) || 0.5,
+        }))
+      );
+      if (syncRes.sections.length > 0 && !syncRes.sections.some((s) => s.id === selectedSectionId)) {
+        setSelectedSectionId(syncRes.sections[0].id);
+      }
+
+      // Refresh exams list so total_questions reflects immediately
+      const refreshedExams = await adminService.getExams();
+      setExams(refreshedExams);
+
+      setSavingAllocation(false);
+      if (!silent) {
+        setAllocationFeedback({
+          type: 'success',
+          text: `Saved! Exam limit set to ${examTotalLimit} questions across ${syncRes.sections.length} section(s).`,
+        });
+      }
+      return syncRes.sections;
+    } catch (err: any) {
+      setSavingAllocation(false);
+      if (!silent) {
+        setAllocationFeedback({ type: 'error', text: err?.message || 'Failed to save allocation.' });
+      }
+      return null;
+    }
   };
 
   const handleOptionTextChange = (index: number, value: string) => {
@@ -148,16 +340,65 @@ export const QuestionsPage: React.FC = () => {
     }
   };
 
+  const activeExam = exams.find((e) => e.id === selectedExamId) || exams[0];
+  const activeCategory = activeExam ? categories.find((c) => c.id === activeExam.category_id) : null;
+  const activeExamLimit = Math.max(1, Number(examTotalLimit) || Number(activeExam?.total_questions) || 100);
+  const remainingExamSlots = Math.max(0, activeExamLimit - allExamQuestions.length);
+
+  // Live Real-Time Bulk Upload Distribution & Limit Preview
+  const bulkPreview = useMemo(() => {
+    if (!jsonContent.trim()) {
+      return { parseError: null as string | null, result: null };
+    }
+    try {
+      const parsed = JSON.parse(jsonContent);
+      const rawList = Array.isArray(parsed) ? parsed : (parsed.questions || []);
+      if (!Array.isArray(rawList)) {
+        return { parseError: 'JSON must be an array of questions or { "questions": [...] }.', result: null };
+      }
+      if (rawList.length === 0) {
+        return { parseError: 'JSON questions array is empty.', result: null };
+      }
+      const distResult = distributeQuestionsAcrossSections({
+        rawQuestions: rawList,
+        sections: sectionAllocations,
+        examLimit: activeExamLimit,
+        existingQuestions: allExamQuestions,
+        replaceMode: jsonReplace,
+        mode: distributionMode,
+        examId: selectedExamId,
+      });
+      return { parseError: null, result: distResult };
+    } catch (err: any) {
+      return { parseError: `Invalid JSON syntax: ${err.message}`, result: null };
+    }
+  }, [jsonContent, sectionAllocations, activeExamLimit, allExamQuestions, jsonReplace, distributionMode, selectedExamId]);
+
   const openCreateModal = () => {
+    if (allExamQuestions.length >= activeExamLimit) {
+      alert(
+        `Whole Exam Question Limit reached (${allExamQuestions.length}/${activeExamLimit}). Only ${activeExamLimit} questions can be added to this exam. Increase the Whole Exam Question Count above if you want to add more.`
+      );
+      return;
+    }
+
+    const activeSec = sections.find((s) => s.id === selectedSectionId);
+    if (activeSec && questions.length >= Number(activeSec.question_count)) {
+      const proceed = confirm(
+        `Section "${activeSec.name}" has already reached its configured limit (${questions.length}/${activeSec.question_count}). Do you want to switch to another section or adjust section counts first? Click Cancel to go back, or OK to continue anyway.`
+      );
+      if (!proceed) return;
+    }
+
     setEditingQuestion(null);
-    setQuestionNumber(questions.length + 1);
+    setQuestionNumber(allExamQuestions.length + 1);
     setQuestionText('');
     setQuestionImage('');
     setDifficulty('medium');
     setTopic('Grammar');
     setSubtopic('');
-    setMarks(2.0);
-    setNegativeMarks(0.5);
+    setMarks(Number(activeExam?.positive_marks) || 2.0);
+    setNegativeMarks(Number(activeExam?.negative_marks) || 0.5);
     setExplanation('');
     setOptions(['', '', '', '']);
     setOptionImages(['', '', '', '']);
@@ -201,98 +442,93 @@ export const QuestionsPage: React.FC = () => {
       image_url: optionImages[i]?.trim() || null,
     }));
 
-    if (editingQuestion) {
-      await adminService.updateQuestion(editingQuestion.id, {
-        question_number: Number(questionNumber),
-        question_text: questionText,
-        difficulty,
-        topic,
-        subtopic,
-        marks: Number(marks),
-        negative_marks: Number(negativeMarks),
-        explanation,
-        solution_steps: [explanation],
-        options: formattedOptions,
-        correctOptionIndex: correctIndex,
-        image_url: questionImage?.trim() || null,
-      });
-    } else {
-      await adminService.createQuestion({
-        exam_id: selectedExamId,
-        section_id: selectedSectionId,
-        question_number: Number(questionNumber),
-        question_text: questionText,
-        difficulty,
-        topic,
-        subtopic,
-        marks: Number(marks),
-        negative_marks: Number(negativeMarks),
-        explanation,
-        solution_steps: [explanation],
-        options: formattedOptions,
-        correctOptionIndex: correctIndex,
-        image_url: questionImage?.trim() || null,
-      });
-    }
+    try {
+      if (editingQuestion) {
+        await adminService.updateQuestion(editingQuestion.id, {
+          question_number: Number(questionNumber),
+          question_text: questionText,
+          difficulty,
+          topic,
+          subtopic,
+          marks: Number(marks),
+          negative_marks: Number(negativeMarks),
+          explanation,
+          solution_steps: [explanation],
+          options: formattedOptions,
+          correctOptionIndex: correctIndex,
+          image_url: questionImage?.trim() || null,
+        });
+      } else {
+        if (allExamQuestions.length >= activeExamLimit) {
+          alert(`Exam question limit reached (${allExamQuestions.length}/${activeExamLimit}). Cannot add more questions.`);
+          return;
+        }
+        await adminService.createQuestion({
+          exam_id: selectedExamId,
+          section_id: selectedSectionId,
+          question_number: Number(questionNumber),
+          question_text: questionText,
+          difficulty,
+          topic,
+          subtopic,
+          marks: Number(marks),
+          negative_marks: Number(negativeMarks),
+          explanation,
+          solution_steps: [explanation],
+          options: formattedOptions,
+          correctOptionIndex: correctIndex,
+          image_url: questionImage?.trim() || null,
+        });
+      }
 
-    setIsModalOpen(false);
-    setEditingQuestion(null);
-    loadQuestions(selectedSectionId, selectedExamId);
+      setIsModalOpen(false);
+      setEditingQuestion(null);
+      await loadQuestions(selectedSectionId, selectedExamId);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to save question.');
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this question?')) {
       await adminService.deleteQuestion(id);
-      loadQuestions(selectedSectionId, selectedExamId);
+      await loadQuestions(selectedSectionId, selectedExamId);
     }
   };
 
   // --------------------------------------------------------------------------
-  // BULK JSON UPLOAD
+  // BULK JSON UPLOAD (ENFORCING EXAM TOTAL LIMIT & SECTION-WISE DIVISION)
   // --------------------------------------------------------------------------
   const downloadJsonTemplate = () => {
+    const templateSections =
+      sectionAllocations.length > 0
+        ? sectionAllocations
+        : [
+            { id: 's1', name: 'English Comprehension', display_order: 1, question_count: 25, duration_seconds: 900, marks_per_correct: 2, negative_marks_per_wrong: 0.5 },
+            { id: 's2', name: 'General Intelligence & Reasoning', display_order: 2, question_count: 25, duration_seconds: 900, marks_per_correct: 2, negative_marks_per_wrong: 0.5 },
+          ];
+
     const samplePayload = {
       replace: false,
-      questions: [
-        {
-          question_number: 1,
-          section_name: 'English Comprehension',
-          question_text: 'Select the synonym of the word METICULOUS:',
-          image_url: null,
-          difficulty: 'easy',
-          topic: 'Vocabulary',
-          subtopic: 'Synonyms',
-          marks: 2.0,
-          negative_marks: 0.5,
-          explanation: 'Meticulous means taking or showing extreme care about minute details; painstaking.',
-          options: [
-            { option_label: 'A', option_text: 'Painstaking', image_url: null },
-            { option_label: 'B', option_text: 'Careless', image_url: null },
-            { option_label: 'C', option_text: 'Hasty', image_url: null },
-            { option_label: 'D', option_text: 'Casual', image_url: null },
-          ],
-          correct_option_label: 'A',
-        },
-        {
-          question_number: 2,
-          section_name: 'General Intelligence & Reasoning',
-          question_text: 'Which figure replaces the question mark in the sequence below?',
-          image_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400',
-          difficulty: 'medium',
-          topic: 'Reasoning',
-          subtopic: 'Pattern Completion',
-          marks: 2.0,
-          negative_marks: 0.5,
-          explanation: 'The pattern rotates clockwise 45 degrees at each step.',
-          options: [
-            { option_label: 'A', option_text: 'Figure 1', image_url: null },
-            { option_label: 'B', option_text: 'Figure 2', image_url: null },
-            { option_label: 'C', option_text: 'Figure 3', image_url: null },
-            { option_label: 'D', option_text: 'Figure 4', image_url: null },
-          ],
-          correct_option_label: 'B',
-        },
-      ],
+      questions: templateSections.map((sec, idx) => ({
+        question_number: idx + 1,
+        section_name: sec.name,
+        question_text: `Sample question for ${sec.name} (Q${idx + 1}): Choose the most appropriate option.`,
+        image_url: null,
+        difficulty: idx % 2 === 0 ? 'easy' : 'medium',
+        topic: sec.name,
+        subtopic: 'Core Concept',
+        marks: sec.marks_per_correct || 2.0,
+        negative_marks: sec.negative_marks_per_wrong || 0.5,
+        explanation: `Detailed step-by-step explanation for ${sec.name} question ${idx + 1}.`,
+        options: [
+          { option_label: 'A', option_text: 'Correct Option', image_url: null },
+          { option_label: 'B', option_text: 'Distractor 1', image_url: null },
+          { option_label: 'C', option_text: 'Distractor 2', image_url: null },
+          { option_label: 'D', option_text: 'Distractor 3', image_url: null },
+        ],
+        correct_option_label: 'A',
+      })),
     };
 
     const blob = new Blob([JSON.stringify(samplePayload, null, 2)], {
@@ -301,7 +537,7 @@ export const QuestionsPage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'vibhillion_questions_bulk_template.json';
+    link.download = `vibhillion_${activeExam?.slug || 'exam'}_bulk_template.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -324,6 +560,13 @@ export const QuestionsPage: React.FC = () => {
       return;
     }
 
+    if (allocatedSectionSum !== Number(examTotalLimit)) {
+      alert(
+        `Section-wise counts sum (${allocatedSectionSum}) must equal Whole Exam Question Count (${examTotalLimit}) before bulk upload. Click "Auto-Divide" or adjust counts.`
+      );
+      return;
+    }
+
     try {
       setIsUploadingJson(true);
       const parsed = JSON.parse(jsonContent);
@@ -335,11 +578,45 @@ export const QuestionsPage: React.FC = () => {
         return;
       }
 
-      const res = await adminService.bulkUploadQuestions({
-        questions: questionsList.map((q: any) => ({
-          ...q,
-          exam_id: q.exam_id || selectedExamId,
+      // 1. Sync configured Exam Question Limit & Section Counts first so section IDs are finalized
+      const syncedSections = await handleSaveExamAndSectionCounts(true);
+      if (!syncedSections || syncedSections.length === 0) {
+        setIsUploadingJson(false);
+        return;
+      }
+
+      // 2. Strictly enforce Whole Exam Question Limit and divide across sections by Content + Section Count
+      const distribution = distributeQuestionsAcrossSections({
+        rawQuestions: questionsList,
+        sections: syncedSections.map((s, idx) => ({
+          id: s.id,
+          name: s.name,
+          display_order: s.display_order || idx + 1,
+          question_count: Number(s.question_count) || 0,
+          duration_seconds: Number(s.duration_seconds) || 900,
+          marks_per_correct: Number(s.marks_per_correct) || 2.0,
+          negative_marks_per_wrong: Number(s.negative_marks_per_wrong) || 0.5,
         })),
+        examLimit: Number(examTotalLimit),
+        existingQuestions: allExamQuestions,
+        replaceMode: jsonReplace,
+        mode: distributionMode,
+        examId: selectedExamId,
+      });
+
+      if (distribution.acceptedCount === 0) {
+        setIsUploadingJson(false);
+        alert(
+          `Upload blocked: Exam has already reached its configured limit of ${examTotalLimit} questions (${distribution.existingExamCount}/${examTotalLimit}). Enable "Replace existing questions for this exam" or increase Whole Exam Question Count.`
+        );
+        return;
+      }
+
+      // 3. Persist the divided & capped questions to the backend
+      const res = await adminService.bulkUploadQuestions({
+        exam_id: selectedExamId,
+        exam_question_limit: Number(examTotalLimit),
+        questions: distribution.assignedQuestions,
         replace: jsonReplace,
       });
 
@@ -347,15 +624,24 @@ export const QuestionsPage: React.FC = () => {
       setIsJsonModalOpen(false);
       setJsonContent('');
       await loadData(selectedExamId);
-      alert(`Bulk Upload Success! Successfully imported ${res.uploaded_count} questions. Total questions in bank: ${res.total_questions}. Synced live across frontend and backend.`);
+
+      const breakdownLines = distribution.sectionBreakdown
+        .map((b) => `• ${b.section_name}: +${b.assigned_now} uploaded (${b.final_count}/${b.target_count})`)
+        .join('\n');
+
+      const excessNote =
+        distribution.excludedExcessCount > 0
+          ? `\n\n⚠️ Limit Enforced: ${distribution.excludedExcessCount} excess question(s) in the file were excluded because this exam is capped at ${examTotalLimit} total questions.`
+          : '';
+
+      alert(
+        `Bulk Upload & Section Division Successful!\n\nUploaded: ${res.uploaded_count} of ${distribution.inputCount} file questions\nExam Limit: ${examTotalLimit} Questions\n\nSection-Wise Division:\n${breakdownLines}${excessNote}`
+      );
     } catch (err: any) {
       setIsUploadingJson(false);
       alert(`JSON Upload Error: ${err.message}`);
     }
   };
-
-  const activeExam = exams.find((e) => e.id === selectedExamId) || exams[0];
-  const activeCategory = activeExam ? categories.find((c) => c.id === activeExam.category_id) : null;
 
   return (
     <div className="page-wrapper">
@@ -385,7 +671,15 @@ export const QuestionsPage: React.FC = () => {
             <span>Bulk Upload JSON</span>
           </button>
 
-          <button className="btn btn-primary" onClick={openCreateModal}>
+          <button
+            className="btn btn-primary"
+            onClick={openCreateModal}
+            title={
+              remainingExamSlots <= 0
+                ? `Exam question limit reached (${allExamQuestions.length}/${activeExamLimit})`
+                : 'Add a single question to selected section'
+            }
+          >
             <Plus size={16} />
             <span>Add Question</span>
           </button>
@@ -420,41 +714,242 @@ export const QuestionsPage: React.FC = () => {
                 <span className="text-xs bg-teal-100 text-teal-800 font-bold px-2.5 py-1 rounded-full border border-teal-200">
                   Category: {activeCategory?.name || 'General'}
                 </span>
-                <span className="text-xs bg-slate-100 text-slate-700 font-medium px-2 py-1 rounded border border-slate-200">
-                  {activeExam.session || 'Shift 1'} • {activeExam.total_questions || 100} Questions Expected
+                <span
+                  className={`text-xs font-bold px-2.5 py-1 rounded border ${
+                    remainingExamSlots === 0
+                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                      : 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                  }`}
+                >
+                  Uploaded: {allExamQuestions.length} / {activeExamLimit} Exam Limit ({remainingExamSlots} left)
                 </span>
               </div>
             )}
           </div>
 
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-            <span>Direct Question Assignment:</span>
+            <span>Question Cap:</span>
             <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">
-              Active Exam Linked
+              Max {activeExamLimit} Qs Enforced
             </span>
           </div>
         </div>
       </div>
 
+      {/* ========================================================================= */}
+      {/* EXAM & SECTION-WISE QUESTION COUNT ALLOCATION PANEL (CONFIGURE BEFORE UPLOAD) */}
+      {/* ========================================================================= */}
+      <div className="content-card p-5 mb-4 border-2 border-indigo-200 bg-gradient-to-br from-white via-indigo-50/30 to-teal-50/20">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 mb-4 border-b border-indigo-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+              <SplitSquareHorizontal size={18} />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">
+                Exam & Section-Wise Question Count Setup
+              </h3>
+              <p className="text-xs text-slate-500">
+                Set total exam question limit & divide across sections before bulk uploading. Only the exam question count limit will be taken during upload.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleSaveExamAndSectionCounts(false)}
+              disabled={savingAllocation}
+              className="btn btn-primary btn-sm bg-teal-600 hover:bg-teal-700 flex items-center gap-1.5 text-xs"
+            >
+              <Save size={14} />
+              <span>{savingAllocation ? 'Saving...' : 'Save Exam & Section Counts'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsJsonModalOpen(true)}
+              className="btn btn-secondary btn-sm bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 flex items-center gap-1.5 text-xs"
+            >
+              <Upload size={14} />
+              <span>Bulk Upload & Auto-Divide</span>
+            </button>
+          </div>
+        </div>
+
+        {allocationFeedback && (
+          <div
+            className={`mb-3 p-2.5 rounded-lg text-xs font-semibold flex items-center justify-between border ${
+              allocationFeedback.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-red-50 border-red-200 text-red-800'
+            }`}
+          >
+            <span>{allocationFeedback.text}</span>
+            <button
+              type="button"
+              onClick={() => setAllocationFeedback(null)}
+              className="ml-3 font-bold opacity-70 hover:opacity-100"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {/* Whole Exam Question Limit + Number of Sections Controls */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="p-3 bg-white rounded-lg border border-slate-200">
+            <label className="text-xs font-bold text-slate-700 block mb-1">
+              1. Whole Exam Question Count (Upload Limit)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                className="form-input text-sm font-black text-indigo-900 w-28"
+                value={examTotalLimit}
+                onChange={(e) => setExamTotalLimit(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+              />
+              <span className="text-xs text-slate-500 font-semibold">
+                Questions Max
+              </span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-white rounded-lg border border-slate-200">
+            <label className="text-xs font-bold text-slate-700 block mb-1">
+              2. Number of Sections to Divide Into
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max="20"
+                className="form-input text-sm font-black text-teal-900 w-20 text-center"
+                value={sectionCountInput}
+                onChange={(e) => {
+                  const nextCount = Math.max(1, Math.min(20, Math.floor(Number(e.target.value) || 1)));
+                  handleAutoDivideSections(examTotalLimit, nextCount);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => handleAutoDivideSections(examTotalLimit, sectionCountInput)}
+                className="btn btn-secondary btn-sm text-xs bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 whitespace-nowrap"
+              >
+                Divide Equally ({examTotalLimit} ÷ {sectionCountInput})
+              </button>
+            </div>
+          </div>
+
+          <div
+            className={`p-3 rounded-lg border flex flex-col justify-center ${
+              allocatedSectionSum === Number(examTotalLimit)
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-amber-50 border-amber-300 text-amber-900'
+            }`}
+          >
+            <div className="text-xs font-bold flex items-center gap-1.5">
+              {allocatedSectionSum === Number(examTotalLimit) ? (
+                <CheckCircle2 size={15} className="text-emerald-600" />
+              ) : (
+                <AlertCircle size={15} className="text-amber-600" />
+              )}
+              <span>Section Sum Verification</span>
+            </div>
+            <div className="text-xs mt-1">
+              Sections Total: <strong>{allocatedSectionSum} Qs</strong> / Exam Limit:{' '}
+              <strong>{examTotalLimit} Qs</strong>
+              {allocatedSectionSum !== Number(examTotalLimit) && (
+                <span className="block text-[11px] font-bold text-amber-800 mt-0.5">
+                  Adjust section counts or click "Divide Equally" to match {examTotalLimit}.
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Section-Wise Editable Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          {sectionAllocations.map((sec, idx) => {
+            const uploadedInSec = allExamQuestions.filter((q) => q.section_id === sec.id).length;
+            const pct = sec.question_count > 0 ? Math.min(100, Math.round((uploadedInSec / sec.question_count) * 100)) : 0;
+            return (
+              <div
+                key={sec.id || idx}
+                className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm space-y-2"
+              >
+                <div className="flex items-center justify-between gap-1.5">
+                  <span className="text-[10px] font-black bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded">
+                    SECTION {idx + 1}
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-600">
+                    Uploaded: <strong className={uploadedInSec >= sec.question_count && sec.question_count > 0 ? 'text-emerald-700' : 'text-indigo-700'}>{uploadedInSec}</strong> / {sec.question_count}
+                  </span>
+                </div>
+
+                <input
+                  type="text"
+                  className="form-input text-xs font-bold py-1.5"
+                  value={sec.name}
+                  placeholder={`Section ${idx + 1} Name`}
+                  onChange={(e) => handleAllocationFieldChange(idx, 'name', e.target.value)}
+                />
+
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-[11px] font-semibold text-slate-500">Question Count:</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="form-input w-20 py-1 px-2 text-xs font-black text-center"
+                    value={sec.question_count}
+                    onChange={(e) => handleAllocationFieldChange(idx, 'question_count', e.target.value)}
+                  />
+                </div>
+
+                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${pct >= 100 ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Section Filter Bar */}
       <div className="content-card p-4 mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <label className="text-sm font-bold text-slate-700">Filter By Section:</label>
           <select
             className="form-input max-w-sm"
             value={selectedSectionId}
             onChange={handleSelectSection}
           >
-            {sections.map((sec) => (
-              <option key={sec.id} value={sec.id}>
-                {sec.name} ({sec.question_count} Qs)
-              </option>
-            ))}
+            <option value="all">
+              All Sections ({allExamQuestions.length} / {activeExamLimit} Qs Uploaded)
+            </option>
+            {sections.map((sec) => {
+              const secUploaded = allExamQuestions.filter((q) => q.section_id === sec.id).length;
+              return (
+                <option key={sec.id} value={sec.id}>
+                  {sec.name} ({secUploaded} / {sec.question_count} Qs)
+                </option>
+              );
+            })}
           </select>
         </div>
 
         <div className="text-xs text-slate-500 font-semibold">
-          Section Questions: <strong>{questions.length}</strong> | Image-enabled: <strong>{questions.filter(q => q.image_url || q.options?.some((o: any) => o.image_url)).length}</strong>
+          Showing: <strong>{questions.length}</strong> Qs | Whole Exam:{' '}
+          <strong>
+            {allExamQuestions.length} / {activeExamLimit}
+          </strong>{' '}
+          | Image-enabled:{' '}
+          <strong>
+            {questions.filter((q) => q.image_url || q.options?.some((o: any) => o.image_url)).length}
+          </strong>
         </div>
       </div>
 
@@ -591,57 +1086,159 @@ export const QuestionsPage: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* BULK UPLOAD QUESTIONS VIA JSON MODAL */}
+      {/* BULK UPLOAD QUESTIONS VIA JSON MODAL (EXAM LIMIT + SECTION-WISE DIVISION) */}
       {/* ========================================================================= */}
       {isJsonModalOpen && (
         <div className="modal-backdrop">
-          <div className="modal-dialog modal-lg">
+          <div className="modal-dialog modal-lg" style={{ maxWidth: '860px', maxHeight: '92vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <div className="flex items-center gap-2">
                 <FileCode size={20} className="text-indigo-600" />
-                <h3 className="modal-title">Bulk Upload Questions (JSON Format)</h3>
+                <div>
+                  <h3 className="modal-title">Bulk Upload & Section-Wise Question Division</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Exam: <strong>{activeExam?.title || 'Selected Exam'}</strong> • Strictly enforces exam question count limit & divides by section count + content
+                  </p>
+                </div>
               </div>
               <button className="btn-close" onClick={() => setIsJsonModalOpen(false)}>×</button>
             </div>
+
             <div className="modal-body space-y-4">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-indigo-900 flex items-start gap-2">
-                <AlertCircle size={16} className="text-indigo-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <strong>Live Synchronized Bulk Upload:</strong> Uploading JSON will immediately persist questions to the live question repository and update counts across sections, exams, and candidate screens in real-time.
+              {/* STEP 1: EXAM TOTAL & SECTION-WISE ALLOCATION */}
+              <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-950">
+                    <SplitSquareHorizontal size={15} className="text-indigo-700" />
+                    <span>Step 1: Set Whole Exam Question Count & Section-Wise Allocation</span>
+                  </div>
+                  <span
+                    className={`text-[11px] font-bold px-2 py-0.5 rounded border ${
+                      allocatedSectionSum === Number(examTotalLimit)
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : 'bg-amber-100 text-amber-900 border-amber-300'
+                    }`}
+                  >
+                    Sections Sum: {allocatedSectionSum} / Exam Limit: {examTotalLimit} Qs
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  <div className="bg-white p-2.5 rounded-lg border border-indigo-100">
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Whole Exam Question Limit *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="form-input py-1 text-xs font-black text-indigo-900"
+                      value={examTotalLimit}
+                      onChange={(e) => setExamTotalLimit(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                    />
+                  </div>
+
+                  <div className="bg-white p-2.5 rounded-lg border border-indigo-100">
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Number of Sections
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        className="form-input py-1 w-16 text-xs font-black text-center"
+                        value={sectionCountInput}
+                        onChange={(e) => {
+                          const nextCount = Math.max(1, Math.min(20, Math.floor(Number(e.target.value) || 1)));
+                          handleAutoDivideSections(examTotalLimit, nextCount);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAutoDivideSections(examTotalLimit, sectionCountInput)}
+                        className="btn btn-secondary btn-sm text-[11px] py-1 px-2 bg-indigo-50 border-indigo-200 text-indigo-700"
+                      >
+                        Auto-Divide
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-2.5 rounded-lg border border-indigo-100">
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Section Division Method
+                    </label>
+                    <select
+                      className="form-input py-1 text-xs font-semibold"
+                      value={distributionMode}
+                      onChange={(e) => setDistributionMode(e.target.value as DistributionMode)}
+                    >
+                      <option value="content_and_count">Content + Section Count (Smart)</option>
+                      <option value="sequential">Sequential by Section Count</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {sectionAllocations.map((sec, idx) => (
+                    <div
+                      key={sec.id || idx}
+                      className="flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-lg border border-indigo-100"
+                    >
+                      <span className="text-[10px] font-black bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded">
+                        S{idx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        className="form-input flex-1 py-1 text-xs font-semibold"
+                        value={sec.name}
+                        onChange={(e) => handleAllocationFieldChange(idx, 'name', e.target.value)}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        className="form-input w-16 py-1 px-1.5 text-xs font-black text-center"
+                        value={sec.question_count}
+                        onChange={(e) => handleAllocationFieldChange(idx, 'question_count', e.target.value)}
+                      />
+                      <span className="text-[11px] text-slate-500 font-semibold">Qs</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div>
-                <label className="form-label">Upload .JSON File:</label>
+              {/* STEP 2: UPLOAD OR PASTE QUESTIONS */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="form-label font-bold text-slate-800">
+                    Step 2: Upload .JSON File or Paste Bulk Questions
+                  </label>
+                  <button
+                    type="button"
+                    onClick={downloadJsonTemplate}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-bold"
+                  >
+                    Download Section-Matched Sample JSON
+                  </button>
+                </div>
+
                 <input
                   type="file"
                   accept=".json,application/json"
                   onChange={handleJsonFileSelect}
                   className="form-input text-xs"
                 />
-              </div>
 
-              <div className="form-group">
-                <div className="flex items-center justify-between">
-                  <label className="form-label">Or Paste Questions JSON:</label>
-                  <button
-                    type="button"
-                    onClick={downloadJsonTemplate}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-bold"
-                  >
-                    Download Sample JSON
-                  </button>
-                </div>
                 <textarea
                   className="form-input font-mono text-xs"
-                  rows={8}
-                  placeholder={`{\n  "questions": [\n    {\n      "question_number": 1,\n      "question_text": "Sample Question Text",\n      "image_url": null,\n      "topic": "Vocabulary",\n      "options": [\n        { "option_label": "A", "option_text": "Choice 1", "image_url": null },\n        { "option_label": "B", "option_text": "Choice 2", "image_url": null }\n      ],\n      "correct_option_label": "A"\n    }\n  ]\n}`}
+                  rows={6}
+                  placeholder={`{\n  "questions": [\n    {\n      "question_number": 1,\n      "section_name": "${sectionAllocations[0]?.name || 'English Comprehension'}",\n      "question_text": "Sample Question Text",\n      "topic": "Vocabulary",\n      "options": [\n        { "option_label": "A", "option_text": "Choice 1" },\n        { "option_label": "B", "option_text": "Choice 2" },\n        { "option_label": "C", "option_text": "Choice 3" },\n        { "option_label": "D", "option_text": "Choice 4" }\n      ],\n      "correct_option_label": "A"\n    }\n  ]\n}`}
                   value={jsonContent}
                   onChange={(e) => setJsonContent(e.target.value)}
                 />
               </div>
 
-              <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded">
+              {/* REPLACE EXISTING CHECKBOX */}
+              <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
                 <input
                   type="checkbox"
                   id="jsonReplaceCheck"
@@ -649,9 +1246,93 @@ export const QuestionsPage: React.FC = () => {
                   onChange={(e) => setJsonReplace(e.target.checked)}
                 />
                 <label htmlFor="jsonReplaceCheck" className="text-xs text-slate-700 cursor-pointer font-medium">
-                  <strong>Replace existing question bank</strong> (Warning: unchecking will append questions instead of replacing)
+                  <strong>Replace existing questions for this exam</strong> (If unchecked, appends only up to the remaining exam limit of {remainingExamSlots} questions)
                 </label>
               </div>
+
+              {/* STEP 3: LIVE DIVISION & LIMIT PREVIEW */}
+              {bulkPreview.parseError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 flex items-center gap-2">
+                  <AlertCircle size={15} className="text-red-600 flex-shrink-0" />
+                  <span>{bulkPreview.parseError}</span>
+                </div>
+              )}
+
+              {bulkPreview.result && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                      <Sparkles size={14} className="text-teal-600" />
+                      <span>Step 3: Live Exam Limit & Section Division Preview</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+                      <span className="bg-slate-200 text-slate-800 px-2 py-0.5 rounded">
+                        In File: {bulkPreview.result.inputCount} Qs
+                      </span>
+                      <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">
+                        Will Upload: {bulkPreview.result.acceptedCount} Qs (Limit: {bulkPreview.result.examLimit})
+                      </span>
+                      {bulkPreview.result.excludedExcessCount > 0 && (
+                        <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-1">
+                          <ShieldAlert size={12} />
+                          <span>Excluded Over Limit: {bulkPreview.result.excludedExcessCount} Qs</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {bulkPreview.result.excludedExcessCount > 0 && (
+                    <div className="p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 font-medium">
+                      <strong>Exam Question Limit Enforced:</strong> Your upload contains{' '}
+                      <strong>{bulkPreview.result.inputCount}</strong> questions, but this exam only has room for{' '}
+                      <strong>{bulkPreview.result.acceptedCount}</strong> question(s) (Whole Exam Limit:{' '}
+                      <strong>{bulkPreview.result.examLimit}</strong>). Only the first{' '}
+                      <strong>{bulkPreview.result.acceptedCount}</strong> questions will be imported and divided across sections.
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-200/70 text-slate-700 text-left">
+                          <th className="py-1.5 px-2.5 rounded-tl">Section Name</th>
+                          <th className="py-1.5 px-2.5 text-center">Target Quota</th>
+                          <th className="py-1.5 px-2.5 text-center">Existing</th>
+                          <th className="py-1.5 px-2.5 text-center">Content Matched</th>
+                          <th className="py-1.5 px-2.5 text-center">Uploading Now</th>
+                          <th className="py-1.5 px-2.5 text-center rounded-tr">Final Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkPreview.result.sectionBreakdown.map((row) => (
+                          <tr key={row.section_id} className="border-t border-slate-200 bg-white">
+                            <td className="py-1.5 px-2.5 font-bold text-slate-800">{row.section_name}</td>
+                            <td className="py-1.5 px-2.5 text-center font-semibold">{row.target_count}</td>
+                            <td className="py-1.5 px-2.5 text-center text-slate-500">{row.existing_count}</td>
+                            <td className="py-1.5 px-2.5 text-center text-indigo-700 font-semibold">
+                              {distributionMode === 'content_and_count' ? row.matched_by_content : '—'}
+                            </td>
+                            <td className="py-1.5 px-2.5 text-center font-black text-teal-700">
+                              +{row.assigned_now}
+                            </td>
+                            <td className="py-1.5 px-2.5 text-center">
+                              <span
+                                className={`px-2 py-0.5 rounded font-bold ${
+                                  row.final_count === row.target_count
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-blue-50 text-blue-800'
+                                }`}
+                              >
+                                {row.final_count} / {row.target_count}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="modal-footer">
@@ -667,9 +1348,18 @@ export const QuestionsPage: React.FC = () => {
                 type="button"
                 className="btn btn-primary bg-indigo-600 hover:bg-indigo-700"
                 onClick={handleExecuteJsonBulkUpload}
-                disabled={isUploadingJson}
+                disabled={
+                  isUploadingJson ||
+                  allocatedSectionSum !== Number(examTotalLimit) ||
+                  Boolean(bulkPreview.parseError) ||
+                  (bulkPreview.result !== null && bulkPreview.result.acceptedCount === 0)
+                }
               >
-                {isUploadingJson ? 'Importing Questions...' : 'Upload & Sync Questions'}
+                {isUploadingJson
+                  ? 'Dividing & Importing...'
+                  : bulkPreview.result
+                  ? `Upload & Divide ${bulkPreview.result.acceptedCount} Question(s)`
+                  : 'Upload & Divide Questions'}
               </button>
             </div>
           </div>

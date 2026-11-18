@@ -711,15 +711,19 @@ export const examService = {
    * Fetch live exam sections with independent duration and questions allocation
    */
   async getExamSections(examId?: string): Promise<ExamSection[]> {
+    const cacheKey = examId ? `@vibhillion_cached_sections_${examId}` : '@vibhillion_cached_sections';
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 2500);
-      const res = await fetch('http://localhost:5173/api/sections', { signal: controller.signal });
+      const url = examId
+        ? `http://localhost:5173/api/sections?exam_id=${encodeURIComponent(examId)}`
+        : 'http://localhost:5173/api/sections';
+      const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          await AsyncStorage.setItem('@vibhillion_cached_sections', JSON.stringify(data));
+          await AsyncStorage.setItem(cacheKey, JSON.stringify(data));
           return data;
         }
       }
@@ -728,7 +732,7 @@ export const examService = {
     }
 
     try {
-      const cached = await AsyncStorage.getItem('@vibhillion_cached_sections');
+      const cached = await AsyncStorage.getItem(cacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -742,16 +746,20 @@ export const examService = {
    * Fetch single exam details with sections and recalculated totals
    */
   async getExamDetails(examId: string): Promise<Exam> {
-    const sections = await this.getExamSections(examId);
-    const totalQ = sections.reduce((a, s) => a + Number(s.question_count || 0), 0) || 100;
-    const totalDur = sections.reduce((a, s) => a + Number(s.duration_seconds || 0), 0) || 3600;
+    const [allExams, sections] = await Promise.all([
+      this.getAllExams(),
+      this.getExamSections(examId),
+    ]);
+    const matchedExam = allExams.find((e) => e.id === examId) || MOCK_EXAM;
+    const totalQ = sections.reduce((a, s) => a + Number(s.question_count || 0), 0) || matchedExam.total_questions || 100;
+    const totalDur = sections.reduce((a, s) => a + Number(s.duration_seconds || 0), 0) || matchedExam.total_duration_seconds || 3600;
     const totalMarks = sections.reduce(
-      (a, s) => a + (Number(s.question_count || 0) * Number(s.marks_per_correct || 2)),
+      (a, s) => a + (Number(s.question_count || 0) * Number(s.marks_per_correct || matchedExam.positive_marks || 2)),
       0
-    ) || 200;
+    ) || matchedExam.total_marks || 200;
 
     return {
-      ...MOCK_EXAM,
+      ...matchedExam,
       total_questions: totalQ,
       total_duration_seconds: totalDur,
       total_marks: totalMarks,

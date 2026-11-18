@@ -30,16 +30,30 @@ function writeLiveStore(data: any): void {
   }
 }
 
-function recalculateTotals(store: any) {
-  if (!store.exam) return;
+function recalculateTotals(store: any, targetExamId?: string) {
+  const examsList = store.exams && store.exams.length > 0 ? store.exams : (store.exam ? [store.exam] : []);
   const sections = store.sections || [];
-  store.exam.total_questions = sections.reduce((acc: number, s: any) => acc + (Number(s.question_count) || 0), 0);
-  store.exam.total_duration_seconds = sections.reduce((acc: number, s: any) => acc + (Number(s.duration_seconds) || 0), 0);
-  store.exam.total_marks = sections.reduce(
-    (acc: number, s: any) => acc + ((Number(s.question_count) || 0) * (Number(s.marks_per_correct) || 2.0)),
-    0
-  );
-  store.exam.updated_at = new Date().toISOString();
+
+  examsList.forEach((ex: any) => {
+    if (targetExamId && ex.id !== targetExamId) return;
+    const examSections = sections.filter((s: any) => s.exam_id === ex.id);
+    if (examSections.length > 0) {
+      ex.total_questions = examSections.reduce((acc: number, s: any) => acc + (Number(s.question_count) || 0), 0);
+      ex.total_duration_seconds = examSections.reduce((acc: number, s: any) => acc + (Number(s.duration_seconds) || 0), 0);
+      ex.total_marks = examSections.reduce(
+        (acc: number, s: any) => acc + ((Number(s.question_count) || 0) * (Number(s.marks_per_correct) || 2.0)),
+        0
+      );
+      ex.updated_at = new Date().toISOString();
+    }
+  });
+
+  if (store.exam && (!targetExamId || store.exam.id === targetExamId)) {
+    const matched = examsList.find((e: any) => e.id === store.exam.id);
+    if (matched) {
+      store.exam = { ...store.exam, ...matched };
+    }
+  }
 }
 
 function parseBody(req: IncomingMessage): Promise<any> {
@@ -206,18 +220,76 @@ function liveSyncApiPlugin(): Plugin {
           return res.end(JSON.stringify({ success: true }));
         }
 
+        // 2.1 ATOMIC SYNC EXAM QUESTION LIMIT & SECTION-WISE ALLOCATIONS
+        if (pathname.match(/^\/api\/exams\/[^/]+\/sections\/sync$/) && req.method === 'POST') {
+          const examId = pathname.replace('/api/exams/', '').replace('/sections/sync', '');
+          const body = await parseBody(req);
+          const incomingSections = Array.isArray(body.sections) ? body.sections : [];
+          const totalQuestionsLimit = Number(body.total_questions) || incomingSections.reduce((a: number, s: any) => a + (Number(s.question_count) || 0), 0);
+
+          if (!store.sections) store.sections = [];
+          if (!store.exams) store.exams = store.exam ? [store.exam] : [];
+
+          const otherSections = store.sections.filter((s: any) => s.exam_id !== examId);
+          const syncedExamSections = incomingSections.map((s: any, idx: number) => {
+            const existing = store.sections.find((exSec: any) => exSec.id === s.id && exSec.exam_id === examId);
+            return {
+              id: existing ? existing.id : (s.id || `sec-${examId}-${Date.now()}-${idx + 1}`),
+              exam_id: examId,
+              name: String(s.name || `Section ${idx + 1}`).trim(),
+              display_order: Number(s.display_order) || (idx + 1),
+              question_count: Math.max(0, Math.floor(Number(s.question_count) || 0)),
+              duration_seconds: Number(s.duration_seconds) || 900,
+              marks_per_correct: Number(s.marks_per_correct) || 2.0,
+              negative_marks_per_wrong: Number(s.negative_marks_per_wrong) || 0.5,
+              created_at: existing?.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+          });
+
+          store.sections = [...otherSections, ...syncedExamSections];
+
+          // Update exam total_questions & totals
+          const examIdx = store.exams.findIndex((e: any) => e.id === examId);
+          if (examIdx !== -1) {
+            store.exams[examIdx].total_questions = totalQuestionsLimit;
+            store.exams[examIdx].total_marks = syncedExamSections.reduce(
+              (acc: number, s: any) => acc + (s.question_count * s.marks_per_correct),
+              0
+            ) || (totalQuestionsLimit * (store.exams[examIdx].positive_marks || 2.0));
+            store.exams[examIdx].updated_at = new Date().toISOString();
+            if (store.exam && store.exam.id === examId) {
+              store.exam = { ...store.exam, ...store.exams[examIdx] };
+            }
+          }
+
+          writeLiveStore(store);
+          return res.end(JSON.stringify({
+            success: true,
+            exam_id: examId,
+            total_questions: totalQuestionsLimit,
+            sections: syncedExamSections,
+          }));
+        }
+
         // 3. SECTIONS
         if (pathname === '/api/sections' && req.method === 'GET') {
-          const sorted = [...(store.sections || [])].sort((a, b) => a.display_order - b.display_order);
+          const examId = searchParams.get('exam_id');
+          let list = [...(store.sections || [])];
+          if (examId && examId !== 'all') {
+            list = list.filter((s: any) => s.exam_id === examId);
+          }
+          const sorted = list.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
           return res.end(JSON.stringify(sorted));
         }
         if (pathname === '/api/sections' && req.method === 'POST') {
           const body = await parseBody(req);
+          const targetExamId = body.exam_id || store.exam?.id;
           const newSec = {
             id: body.id || 'sec-' + Date.now(),
-            exam_id: body.exam_id || store.exam?.id,
+            exam_id: targetExamId,
             name: body.name || 'New Section',
-            display_order: Number(body.display_order) || (store.sections.length + 1),
+            display_order: Number(body.display_order) || (store.sections.filter((s: any) => s.exam_id === targetExamId).length + 1),
             question_count: Number(body.question_count) || 25,
             duration_seconds: Number(body.duration_seconds) || 900,
             marks_per_correct: Number(body.marks_per_correct) || 2.0,
@@ -226,7 +298,7 @@ function liveSyncApiPlugin(): Plugin {
             updated_at: new Date().toISOString(),
           };
           store.sections.push(newSec);
-          recalculateTotals(store);
+          recalculateTotals(store, targetExamId);
           writeLiveStore(store);
           return res.end(JSON.stringify(newSec));
         }
@@ -244,7 +316,7 @@ function liveSyncApiPlugin(): Plugin {
               negative_marks_per_wrong: body.negative_marks_per_wrong !== undefined ? Number(body.negative_marks_per_wrong) : store.sections[idx].negative_marks_per_wrong,
               updated_at: new Date().toISOString(),
             };
-            recalculateTotals(store);
+            recalculateTotals(store, store.sections[idx].exam_id);
             writeLiveStore(store);
             return res.end(JSON.stringify(store.sections[idx]));
           }
@@ -253,9 +325,10 @@ function liveSyncApiPlugin(): Plugin {
         }
         if (pathname.startsWith('/api/sections/') && req.method === 'DELETE') {
           const sectionId = pathname.replace('/api/sections/', '');
+          const existingSec = store.sections.find((s: any) => s.id === sectionId);
           store.sections = store.sections.filter((s: any) => s.id !== sectionId);
           store.questions = store.questions.filter((q: any) => q.section_id !== sectionId);
-          recalculateTotals(store);
+          recalculateTotals(store, existingSec?.exam_id);
           writeLiveStore(store);
           return res.end(JSON.stringify({ success: true }));
         }
@@ -278,7 +351,7 @@ function liveSyncApiPlugin(): Plugin {
           return res.end(JSON.stringify(list));
         }
 
-        // 4.1 BULK UPLOAD QUESTIONS VIA JSON
+        // 4.1 BULK UPLOAD QUESTIONS VIA JSON (STRICT EXAM LIMIT + SECTION-WISE ALLOCATION)
         if (pathname === '/api/questions/bulk' && req.method === 'POST') {
           const body = await parseBody(req);
           const rawQuestions = Array.isArray(body) ? body : (Array.isArray(body.questions) ? body.questions : []);
@@ -290,16 +363,59 @@ function liveSyncApiPlugin(): Plugin {
           }
 
           const labels = ['A', 'B', 'C', 'D'];
-          const sections = store.sections || [];
+          const targetExamId =
+            body.exam_id ||
+            rawQuestions[0]?.exam_id ||
+            store.exams?.[0]?.id ||
+            store.exam?.id;
+
+          const examsList = store.exams && store.exams.length > 0 ? store.exams : (store.exam ? [store.exam] : []);
+          const targetExam = examsList.find((e: any) => e.id === targetExamId);
+
+          // Helper to identify questions belonging to targetExamId
+          const isQuestionInExam = (q: any, exId: string) => {
+            if (q.exam_id === exId) return true;
+            const sec = (store.sections || []).find((s: any) => s.id === q.section_id);
+            return sec ? sec.exam_id === exId : (!q.exam_id && (exId === store.exam?.id || (store.exams && store.exams[0]?.id === exId)));
+          };
+
+          const examSections = (store.sections || []).filter((s: any) => s.exam_id === targetExamId);
+          const sections = examSections.length > 0 ? examSections : (store.sections || []);
           const defaultSectionId = sections[0]?.id || 'sec-default';
 
-          const processed = rawQuestions.map((item: any, idx: number) => {
+          // Enforce strict whole-exam question count limit!
+          const configuredExamLimit = Math.max(
+            1,
+            Number(body.exam_question_limit) ||
+            Number(targetExam?.total_questions) ||
+            sections.reduce((acc: number, s: any) => acc + (Number(s.question_count) || 0), 0) ||
+            100
+          );
+
+          const existingExamQuestions = replaceMode
+            ? []
+            : (store.questions || []).filter((q: any) => isQuestionInExam(q, targetExamId));
+
+          const remainingExamCapacity = Math.max(0, configuredExamLimit - existingExamQuestions.length);
+
+          if (remainingExamCapacity <= 0) {
+            res.statusCode = 400;
+            return res.end(JSON.stringify({
+              error: `Exam question limit reached (${existingExamQuestions.length}/${configuredExamLimit}). Enable "Replace existing questions" or increase the Exam Question Limit to upload more.`,
+            }));
+          }
+
+          // Cap incoming questions strictly at remainingExamCapacity
+          const cappedRawQuestions = rawQuestions.slice(0, remainingExamCapacity);
+          const skippedExcessCount = Math.max(0, rawQuestions.length - cappedRawQuestions.length);
+
+          const processed = cappedRawQuestions.map((item: any, idx: number) => {
             const qId = item.id || `q-bulk-${Date.now()}-${idx + 1}`;
-            
-            // Resolve section_id: by id or by section name
+
+            // Resolve section_id: by id or by section name (within target exam sections)
             let secId = item.section_id;
             if (!secId || !sections.some((s: any) => s.id === secId)) {
-              const matchedSec = sections.find((s: any) => 
+              const matchedSec = sections.find((s: any) =>
                 item.section_name && s.name.toLowerCase().includes(item.section_name.toLowerCase())
               );
               secId = matchedSec ? matchedSec.id : defaultSectionId;
@@ -350,9 +466,9 @@ function liveSyncApiPlugin(): Plugin {
 
             return {
               id: qId,
-              exam_id: item.exam_id || body.exam_id || (sections.find((s: any) => s.id === secId)?.exam_id) || store.exams?.[0]?.id || store.exam?.id,
+              exam_id: targetExamId,
               section_id: secId,
-              question_number: Number(item.question_number) || (replaceMode ? (idx + 1) : (store.questions.length + idx + 1)),
+              question_number: Number(item.question_number) || (existingExamQuestions.length + idx + 1),
               question_text: item.question_text || item.text || 'Untitled Question',
               question_type: item.question_type || 'single_choice',
               difficulty: item.difficulty || 'medium',
@@ -372,7 +488,9 @@ function liveSyncApiPlugin(): Plugin {
           });
 
           if (replaceMode) {
-            store.questions = processed;
+            // Replace ONLY questions for the target exam, keeping other exams intact!
+            const otherExamQuestions = (store.questions || []).filter((q: any) => !isQuestionInExam(q, targetExamId));
+            store.questions = [...otherExamQuestions, ...processed];
           } else {
             // Append or upsert
             processed.forEach((newQ: any) => {
@@ -385,24 +503,52 @@ function liveSyncApiPlugin(): Plugin {
             });
           }
 
-          // Recalculate section counts
-          store.sections.forEach((sec: any) => {
-            sec.question_count = store.questions.filter((q: any) => q.section_id === sec.id).length;
-          });
+          // Preserve configured section question_count targets (do NOT shrink configured target quotas!)
+          const sectionBreakdown = sections.map((sec: any) => ({
+            section_id: sec.id,
+            section_name: sec.name,
+            target_count: Number(sec.question_count) || 0,
+            uploaded_now: processed.filter((q: any) => q.section_id === sec.id).length,
+            total_after: store.questions.filter((q: any) => q.section_id === sec.id).length,
+          }));
 
-          recalculateTotals(store);
           writeLiveStore(store);
+
+          const finalExamQuestionsCount = store.questions.filter((q: any) => isQuestionInExam(q, targetExamId)).length;
 
           return res.end(JSON.stringify({
             success: true,
             uploaded_count: processed.length,
+            skipped_excess_count: skippedExcessCount,
+            exam_limit: configuredExamLimit,
+            total_exam_questions: finalExamQuestionsCount,
             total_questions: store.questions.length,
+            section_breakdown: sectionBreakdown,
             questions: store.questions,
           }));
         }
 
         if (pathname === '/api/questions' && req.method === 'POST') {
           const body = await parseBody(req);
+          const targetExamId = body.exam_id || (store.sections.find((s: any) => s.id === body.section_id)?.exam_id) || store.exams?.[0]?.id || store.exam?.id;
+          const examsList = store.exams && store.exams.length > 0 ? store.exams : (store.exam ? [store.exam] : []);
+          const targetExam = examsList.find((e: any) => e.id === targetExamId);
+
+          // Enforce whole exam question limit on single add too
+          if (targetExam && targetExam.total_questions > 0) {
+            const existingInExam = (store.questions || []).filter((q: any) => {
+              if (q.exam_id === targetExamId) return true;
+              const sec = (store.sections || []).find((s: any) => s.id === q.section_id);
+              return sec ? sec.exam_id === targetExamId : false;
+            });
+            if (existingInExam.length >= Number(targetExam.total_questions)) {
+              res.statusCode = 400;
+              return res.end(JSON.stringify({
+                error: `Exam question limit reached (${existingInExam.length}/${targetExam.total_questions}). Increase the Exam Total Questions limit first.`,
+              }));
+            }
+          }
+
           const qId = body.id || 'q-' + Date.now();
           const labels = ['A', 'B', 'C', 'D'];
           const options = (body.options || []).map((optItem: any, idx: number) => {
@@ -422,7 +568,7 @@ function liveSyncApiPlugin(): Plugin {
 
           const newQ = {
             id: qId,
-            exam_id: body.exam_id || (store.sections.find((s: any) => s.id === body.section_id)?.exam_id) || store.exams?.[0]?.id || store.exam?.id,
+            exam_id: targetExamId,
             section_id: body.section_id,
             question_number: Number(body.question_number) || (store.questions.length + 1),
             question_text: body.question_text,
@@ -443,15 +589,6 @@ function liveSyncApiPlugin(): Plugin {
           };
 
           store.questions.push(newQ);
-
-          // Update section question count automatically
-          const targetSec = store.sections.find((s: any) => s.id === body.section_id);
-          if (targetSec) {
-            const secQuestionsCount = store.questions.filter((q: any) => q.section_id === body.section_id).length;
-            targetSec.question_count = secQuestionsCount;
-          }
-
-          recalculateTotals(store);
           writeLiveStore(store);
           return res.end(JSON.stringify(newQ));
         }
@@ -497,14 +634,6 @@ function liveSyncApiPlugin(): Plugin {
               updated_at: new Date().toISOString(),
             };
 
-            // If section changed, update question counts
-            if (body.section_id && body.section_id !== existing.section_id) {
-              store.sections.forEach((s: any) => {
-                s.question_count = store.questions.filter((q: any) => q.section_id === s.id).length;
-              });
-            }
-
-            recalculateTotals(store);
             writeLiveStore(store);
             return res.end(JSON.stringify(store.questions[idx]));
           }
@@ -513,19 +642,7 @@ function liveSyncApiPlugin(): Plugin {
         }
         if (pathname.startsWith('/api/questions/') && req.method === 'DELETE') {
           const questionId = pathname.replace('/api/questions/', '');
-          const existing = store.questions.find((q: any) => q.id === questionId);
-          const secId = existing?.section_id;
-
           store.questions = store.questions.filter((q: any) => q.id !== questionId);
-
-          if (secId) {
-            const targetSec = store.sections.find((s: any) => s.id === secId);
-            if (targetSec) {
-              targetSec.question_count = store.questions.filter((q: any) => q.section_id === secId).length;
-            }
-          }
-
-          recalculateTotals(store);
           writeLiveStore(store);
           return res.end(JSON.stringify({ success: true }));
         }

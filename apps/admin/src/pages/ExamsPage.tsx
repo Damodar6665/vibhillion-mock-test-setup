@@ -15,10 +15,20 @@ import {
   HelpCircle,
   ArrowRight,
   BookOpen,
+  Upload,
+  SplitSquareHorizontal,
+  AlertCircle,
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { adminService } from '../services/adminService';
-import { Exam, Category } from '@vibhillion/shared';
+import { Exam, Category, ExamSection } from '@vibhillion/shared';
+import { divideTotalAcrossSections, getDefaultSectionNames } from '../utils/questionDistributor';
+
+interface SectionDraft {
+  id?: string;
+  name: string;
+  question_count: number;
+}
 
 export const ExamsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -27,6 +37,7 @@ export const ExamsPage: React.FC = () => {
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [allSections, setAllSections] = useState<ExamSection[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>(initialCategory);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,11 +59,25 @@ export const ExamsPage: React.FC = () => {
   const [negativeMarks, setNegativeMarks] = useState(0.5);
   const [status, setStatus] = useState<'draft' | 'published' | 'archived'>('published');
 
+  // Section-wise allocation drafts inside Exam Modal
+  const [sectionCountInput, setSectionCountInput] = useState(4);
+  const [sectionDrafts, setSectionDrafts] = useState<SectionDraft[]>([
+    { name: 'English Comprehension', question_count: 25 },
+    { name: 'General Intelligence & Reasoning', question_count: 25 },
+    { name: 'Quantitative Aptitude', question_count: 25 },
+    { name: 'General Awareness', question_count: 25 },
+  ]);
+
   const loadData = () => {
     setLoading(true);
-    Promise.all([adminService.getExams(), adminService.getCategories()]).then(([examData, catData]) => {
+    Promise.all([
+      adminService.getExams(),
+      adminService.getCategories(),
+      adminService.getSections(),
+    ]).then(([examData, catData, secData]) => {
       setExams(examData);
       setCategories(catData);
+      setAllSections(secData);
       const activeCat = selectedCategoryFilter !== 'all' ? selectedCategoryFilter : (catData[0]?.id || '');
       if (!categoryId) setCategoryId(activeCat);
       setLoading(false);
@@ -76,6 +101,37 @@ export const ExamsPage: React.FC = () => {
     return exams.filter((e) => e.category_id === selectedCategoryFilter);
   }, [exams, selectedCategoryFilter]);
 
+  const handleAutoDivideSections = (targetTotal = totalQuestions, targetSecCount = sectionCountInput) => {
+    const safeSecCount = Math.max(1, Math.min(20, Math.floor(Number(targetSecCount) || 1)));
+    const safeTotal = Math.max(1, Math.floor(Number(targetTotal) || 1));
+    const counts = divideTotalAcrossSections(safeTotal, safeSecCount);
+    const defaultNames = getDefaultSectionNames(safeSecCount);
+
+    setSectionCountInput(safeSecCount);
+    setSectionDrafts((prev) =>
+      counts.map((cnt, idx) => ({
+        id: prev[idx]?.id,
+        name: prev[idx]?.name || defaultNames[idx],
+        question_count: cnt,
+      }))
+    );
+  };
+
+  const handleSectionDraftChange = (index: number, field: 'name' | 'question_count', value: string | number) => {
+    setSectionDrafts((prev) =>
+      prev.map((sec, idx) =>
+        idx === index
+          ? { ...sec, [field]: field === 'question_count' ? Math.max(0, Number(value) || 0) : value }
+          : sec
+      )
+    );
+  };
+
+  const sectionDraftSum = useMemo(
+    () => sectionDrafts.reduce((sum, s) => sum + (Number(s.question_count) || 0), 0),
+    [sectionDrafts]
+  );
+
   const openCreateModal = () => {
     setEditingExam(null);
     const activeCat = selectedCategoryFilter !== 'all' ? selectedCategoryFilter : (categories[0]?.id || '');
@@ -93,6 +149,13 @@ export const ExamsPage: React.FC = () => {
     setPositiveMarks(2.0);
     setNegativeMarks(0.5);
     setStatus('published');
+    setSectionCountInput(4);
+    setSectionDrafts([
+      { name: 'English Comprehension', question_count: 25 },
+      { name: 'General Intelligence & Reasoning', question_count: 25 },
+      { name: 'Quantitative Aptitude', question_count: 25 },
+      { name: 'General Awareness', question_count: 25 },
+    ]);
     setIsModalOpen(true);
   };
 
@@ -112,6 +175,27 @@ export const ExamsPage: React.FC = () => {
     setPositiveMarks(exam.positive_marks);
     setNegativeMarks(exam.negative_marks);
     setStatus(exam.status);
+
+    const existingSecs = allSections
+      .filter((s) => s.exam_id === exam.id)
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+
+    if (existingSecs.length > 0) {
+      setSectionCountInput(existingSecs.length);
+      setSectionDrafts(
+        existingSecs.map((s) => ({
+          id: s.id,
+          name: s.name,
+          question_count: Number(s.question_count) || 0,
+        }))
+      );
+    } else {
+      const counts = divideTotalAcrossSections(exam.total_questions || 100, 4);
+      const names = getDefaultSectionNames(4);
+      setSectionCountInput(4);
+      setSectionDrafts(counts.map((cnt, idx) => ({ name: names[idx], question_count: cnt })));
+    }
+
     setIsModalOpen(true);
   };
 
@@ -122,6 +206,13 @@ export const ExamsPage: React.FC = () => {
     // Validation: Total questions must be positive
     if (totalQuestions <= 0) {
       alert('Total questions must be greater than 0');
+      return;
+    }
+
+    if (sectionDraftSum !== Number(totalQuestions)) {
+      alert(
+        `Section-wise question sum (${sectionDraftSum}) must equal Whole Exam Total Questions (${totalQuestions}). Click "Auto-Divide Equally" or adjust section counts.`
+      );
       return;
     }
 
@@ -142,10 +233,29 @@ export const ExamsPage: React.FC = () => {
       status,
     };
 
+    let savedExamId = editingExam?.id;
     if (editingExam) {
       await adminService.updateExam(editingExam.id, payload);
     } else {
-      await adminService.createExam(payload);
+      const created = await adminService.createExam(payload);
+      savedExamId = created.id;
+    }
+
+    if (savedExamId && sectionDrafts.length > 0) {
+      const perSecDuration = Math.max(60, Math.round(Number(totalDurationSeconds) / sectionDrafts.length));
+      await adminService.syncExamSections(
+        savedExamId,
+        Number(totalQuestions),
+        sectionDrafts.map((s, idx) => ({
+          id: s.id,
+          name: s.name.trim() || `Section ${idx + 1}`,
+          display_order: idx + 1,
+          question_count: Number(s.question_count) || 0,
+          duration_seconds: perSecDuration,
+          marks_per_correct: Number(positiveMarks) || 2.0,
+          negative_marks_per_wrong: Number(negativeMarks) || 0.5,
+        }))
+      );
     }
 
     setIsModalOpen(false);
@@ -253,6 +363,9 @@ export const ExamsPage: React.FC = () => {
               <tbody>
                 {filteredExams.map((exam) => {
                   const catName = categoryMap[exam.category_id] || 'General';
+                  const examSections = allSections
+                    .filter((s) => s.exam_id === exam.id)
+                    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
                   return (
                     <tr key={exam.id}>
                       <td>
@@ -275,10 +388,25 @@ export const ExamsPage: React.FC = () => {
                         <div className="text-xs text-slate-600 mt-1">{exam.year} • {exam.session}</div>
                       </td>
                       <td>
-                        <div className="font-semibold text-slate-800">{exam.total_questions} Questions</div>
-                        <div className="text-xs text-slate-500">
-                          {Math.round(exam.total_duration_seconds / 60)} Minutes
+                        <div className="font-semibold text-slate-800">
+                          {exam.total_questions} Questions Limit
                         </div>
+                        <div className="text-xs text-slate-500">
+                          {Math.round(exam.total_duration_seconds / 60)} Mins •{' '}
+                          <strong className="text-indigo-700">{examSections.length || 0} Sections</strong>
+                        </div>
+                        {examSections.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {examSections.map((s) => (
+                              <span
+                                key={s.id}
+                                className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200"
+                              >
+                                {s.name}: <strong>{s.question_count}</strong>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <span className="text-sm font-semibold text-emerald-600">+{exam.positive_marks}</span>
@@ -306,19 +434,27 @@ export const ExamsPage: React.FC = () => {
                         )}
                       </td>
                       <td>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <button
                             className="btn btn-primary btn-sm flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white text-xs px-2.5 py-1"
                             onClick={() => navigate(`/questions?exam_id=${exam.id}`)}
-                            title="Add & Manage Questions for this Exam"
+                            title="Configure Exam/Section Counts & Add Questions"
                           >
                             <Plus size={13} />
                             <span>Add Questions</span>
                           </button>
                           <button
+                            className="btn btn-secondary btn-sm flex items-center gap-1 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs px-2.5 py-1"
+                            onClick={() => navigate(`/questions?exam_id=${exam.id}&open_bulk=1`)}
+                            title="Bulk Upload & Divide Questions Section-Wise"
+                          >
+                            <Upload size={13} />
+                            <span>Bulk Upload</span>
+                          </button>
+                          <button
                             className="btn-icon text-blue-600 hover:bg-blue-50"
                             onClick={() => openEditModal(exam)}
-                            title="Edit"
+                            title="Edit Exam & Section Counts"
                           >
                             <Edit2 size={15} />
                           </button>
@@ -439,12 +575,18 @@ export const ExamsPage: React.FC = () => {
 
                 <div className="grid-3-cols">
                   <div className="form-group">
-                    <label className="form-label">Total Questions</label>
+                    <label className="form-label font-bold text-slate-800">Whole Exam Total Questions *</label>
                     <input
                       type="number"
-                      className="form-input"
+                      min="1"
+                      className="form-input font-bold"
                       value={totalQuestions}
-                      onChange={(e) => setTotalQuestions(Number(e.target.value))}
+                      onChange={(e) => {
+                        const nextTotal = Math.max(1, Number(e.target.value) || 1);
+                        setTotalQuestions(nextTotal);
+                        setTotalMarks(nextTotal * positiveMarks);
+                      }}
+                      required
                     />
                   </div>
                   <div className="form-group">
@@ -464,6 +606,94 @@ export const ExamsPage: React.FC = () => {
                       value={totalMarks}
                       onChange={(e) => setTotalMarks(Number(e.target.value))}
                     />
+                  </div>
+                </div>
+
+                {/* SECTION-WISE QUESTION COUNT DIVISION SETUP */}
+                <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <SplitSquareHorizontal size={16} className="text-indigo-700" />
+                      <h4 className="font-bold text-sm text-indigo-950">
+                        Section-Wise Question Count Setup
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold text-slate-700">Number of Sections:</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="20"
+                        className="form-input w-16 py-1 px-2 text-xs font-bold text-center"
+                        value={sectionCountInput}
+                        onChange={(e) => {
+                          const nextCount = Math.max(1, Math.min(20, Number(e.target.value) || 1));
+                          handleAutoDivideSections(totalQuestions, nextCount);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAutoDivideSections(totalQuestions, sectionCountInput)}
+                        className="btn btn-secondary btn-sm text-xs bg-white border-indigo-300 text-indigo-700 hover:bg-indigo-100"
+                      >
+                        Auto-Divide ({totalQuestions} ÷ {sectionCountInput})
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    {sectionDrafts.map((sec, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 bg-white p-2 rounded-lg border border-indigo-100 shadow-sm"
+                      >
+                        <span className="text-[11px] font-black bg-indigo-100 text-indigo-800 px-2 py-1 rounded">
+                          S{idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          className="form-input flex-1 py-1 text-xs font-medium"
+                          placeholder={`Section ${idx + 1} Name`}
+                          value={sec.name}
+                          onChange={(e) => handleSectionDraftChange(idx, 'name', e.target.value)}
+                          required
+                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            className="form-input w-16 py-1 px-2 text-xs font-bold text-center"
+                            value={sec.question_count}
+                            onChange={(e) => handleSectionDraftChange(idx, 'question_count', e.target.value)}
+                            required
+                          />
+                          <span className="text-[11px] text-slate-500 font-semibold">Qs</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    className={`flex items-center justify-between text-xs px-3 py-2 rounded-lg border font-semibold ${
+                      sectionDraftSum === Number(totalQuestions)
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : 'bg-amber-50 border-amber-300 text-amber-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {sectionDraftSum === Number(totalQuestions) ? (
+                        <CheckCircle size={14} className="text-emerald-600" />
+                      ) : (
+                        <AlertCircle size={14} className="text-amber-600" />
+                      )}
+                      <span>
+                        Section Sum: <strong>{sectionDraftSum} Qs</strong> / Whole Exam Limit:{' '}
+                        <strong>{totalQuestions} Qs</strong>
+                      </span>
+                    </div>
+                    {sectionDraftSum !== Number(totalQuestions) && (
+                      <span>Must match Exam Total ({totalQuestions - sectionDraftSum > 0 ? `+${totalQuestions - sectionDraftSum} left` : `${sectionDraftSum - totalQuestions} over`})</span>
+                    )}
                   </div>
                 </div>
 

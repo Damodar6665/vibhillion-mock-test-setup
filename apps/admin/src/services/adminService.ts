@@ -258,12 +258,77 @@ export const adminService = {
   // ----------------------------------------------------------------------------
   // SECTIONS
   // ----------------------------------------------------------------------------
+  async syncExamSections(
+    examId: string,
+    totalQuestions: number,
+    sections: Array<{
+      id?: string;
+      name: string;
+      display_order: number;
+      question_count: number;
+      duration_seconds?: number;
+      marks_per_correct?: number;
+      negative_marks_per_wrong?: number;
+    }>
+  ): Promise<{ success: boolean; exam_id: string; total_questions: number; sections: ExamSection[] }> {
+    const apiRes = await apiCall<any>(`/api/exams/${examId}/sections/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ total_questions: totalQuestions, sections }),
+    });
+
+    if (apiRes && apiRes.success) {
+      MOCK_SECTIONS = [
+        ...MOCK_SECTIONS.filter((s) => s.exam_id !== examId),
+        ...apiRes.sections,
+      ];
+      const exIdx = MOCK_EXAMS.findIndex((e) => e.id === examId);
+      if (exIdx !== -1) {
+        MOCK_EXAMS[exIdx].total_questions = totalQuestions;
+      }
+      return apiRes;
+    }
+
+    // In-memory fallback
+    const otherSections = MOCK_SECTIONS.filter((s) => s.exam_id !== examId);
+    const synced: ExamSection[] = sections.map((s, idx) => ({
+      id: s.id || `sec-${examId}-${Date.now()}-${idx + 1}`,
+      exam_id: examId,
+      name: s.name || `Section ${idx + 1}`,
+      display_order: Number(s.display_order) || idx + 1,
+      question_count: Math.max(0, Math.floor(Number(s.question_count) || 0)),
+      duration_seconds: Number(s.duration_seconds) || 900,
+      marks_per_correct: Number(s.marks_per_correct) || 2.0,
+      negative_marks_per_wrong: Number(s.negative_marks_per_wrong) || 0.5,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+
+    MOCK_SECTIONS = [...otherSections, ...synced];
+    const exIdx = MOCK_EXAMS.findIndex((e) => e.id === examId);
+    if (exIdx !== -1) {
+      MOCK_EXAMS[exIdx].total_questions = totalQuestions;
+      MOCK_EXAMS[exIdx].total_marks = synced.reduce(
+        (acc, s) => acc + s.question_count * s.marks_per_correct,
+        0
+      );
+    }
+
+    return {
+      success: true,
+      exam_id: examId,
+      total_questions: totalQuestions,
+      sections: synced,
+    };
+  },
+
   async getSections(examId?: string): Promise<ExamSection[]> {
-    const live = await apiCall<ExamSection[]>('/api/sections');
-    if (live && Array.isArray(live) && live.length > 0) {
-      MOCK_SECTIONS = live;
-      recalculateMockExam();
-      if (examId) return live.filter((s) => s.exam_id === examId);
+    const endpoint = examId && examId !== 'all' ? `/api/sections?exam_id=${encodeURIComponent(examId)}` : '/api/sections';
+    const live = await apiCall<ExamSection[]>(endpoint);
+    if (live && Array.isArray(live)) {
+      if (!examId || examId === 'all') {
+        MOCK_SECTIONS = live;
+      }
       return live;
     }
     if (isSupabaseConfigured) {
@@ -344,7 +409,7 @@ export const adminService = {
     if (examId && examId !== 'all') params.append('exam_id', examId);
     const qs = params.toString() ? `?${params.toString()}` : '';
     const live = await apiCall<any[]>(`/api/questions${qs}`);
-    if (live && Array.isArray(live) && live.length > 0) {
+    if (live && Array.isArray(live)) {
       return live;
     }
     let filtered = [...MOCK_QUESTIONS];
@@ -369,11 +434,27 @@ export const adminService = {
     correctOptionIndex: number; // 0..3
     image_url?: string | null;
   }): Promise<void> {
-    const apiRes = await apiCall<any>('/api/questions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let apiRes: any = null;
+    try {
+      const res = await fetch('/api/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        if (errBody?.error) {
+          throw new Error(errBody.error);
+        }
+      } else {
+        apiRes = await res.json();
+      }
+    } catch (err: any) {
+      if (err?.message && err.message.includes('Exam question limit')) {
+        throw err;
+      }
+      // API unreachable, fallback to memory
+    }
 
     const qId = apiRes?.id || 'q-' + Date.now();
     const labels = ['A', 'B', 'C', 'D'];
@@ -411,12 +492,6 @@ export const adminService = {
     };
 
     MOCK_QUESTIONS.push(newQ);
-
-    const targetSec = MOCK_SECTIONS.find((s) => s.id === payload.section_id);
-    if (targetSec) {
-      targetSec.question_count = MOCK_QUESTIONS.filter((q) => q.section_id === payload.section_id).length;
-    }
-    recalculateMockExam();
   },
 
   async updateQuestion(
@@ -482,29 +557,58 @@ export const adminService = {
         answer_explanation: payload.explanation !== undefined ? payload.explanation : existing.answer_explanation,
       };
 
-      if (payload.section_id && payload.section_id !== existing.section_id) {
-        MOCK_SECTIONS.forEach((s) => {
-          s.question_count = MOCK_QUESTIONS.filter((q) => q.section_id === s.id).length;
-        });
-      }
-      recalculateMockExam();
       return MOCK_QUESTIONS[idx];
     }
     if (apiRes) return apiRes;
     throw new Error('Question not found');
   },
 
-  async bulkUploadQuestions(payload: { questions: any[]; replace?: boolean } | any[]): Promise<{
+  async bulkUploadQuestions(
+    payload:
+      | {
+          exam_id?: string;
+          exam_question_limit?: number;
+          questions: any[];
+          replace?: boolean;
+        }
+      | any[]
+  ): Promise<{
     success: boolean;
     uploaded_count: number;
+    skipped_excess_count?: number;
+    exam_limit?: number;
+    total_exam_questions?: number;
     total_questions: number;
+    section_breakdown?: Array<{
+      section_id: string;
+      section_name: string;
+      target_count: number;
+      uploaded_now: number;
+      total_after: number;
+    }>;
     questions: any[];
   }> {
-    const apiRes = await apiCall<any>('/api/questions/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let apiRes: any = null;
+    try {
+      const res = await fetch('/api/questions/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        if (errBody?.error) {
+          throw new Error(errBody.error);
+        }
+      } else {
+        apiRes = await res.json();
+      }
+    } catch (err: any) {
+      if (err?.message && (err.message.includes('Exam question limit') || err.message.includes('No valid questions'))) {
+        throw err;
+      }
+      // API unreachable, fallback to memory
+    }
 
     if (apiRes && apiRes.success) {
       if (apiRes.questions) {
@@ -513,10 +617,22 @@ export const adminService = {
       return apiRes;
     }
 
-    // In-memory fallback
-    const rawQuestions = Array.isArray(payload) ? payload : (payload.questions || []);
+    // In-memory fallback with exam limit enforcement
+    const isArray = Array.isArray(payload);
+    const rawQuestions = isArray ? payload : (payload.questions || []);
+    const replaceMode = !isArray && Boolean(payload.replace);
+    const targetExamId = !isArray ? (payload.exam_id || rawQuestions[0]?.exam_id) : rawQuestions[0]?.exam_id;
+    const examLimit = !isArray && payload.exam_question_limit ? Number(payload.exam_question_limit) : 100;
+
+    const existingForExam = replaceMode
+      ? []
+      : MOCK_QUESTIONS.filter((q) => !targetExamId || q.exam_id === targetExamId);
+    const remainingCap = Math.max(0, examLimit - existingForExam.length);
+    const capped = rawQuestions.slice(0, remainingCap);
+    const skippedExcess = Math.max(0, rawQuestions.length - capped.length);
+
     const labels = ['A', 'B', 'C', 'D'];
-    const processed = rawQuestions.map((item: any, idx: number) => {
+    const processed = capped.map((item: any, idx: number) => {
       const qId = item.id || `q-bulk-${Date.now()}-${idx + 1}`;
       const secId = item.section_id || MOCK_SECTIONS[0]?.id;
       let opts = item.options || [];
@@ -534,10 +650,18 @@ export const adminService = {
           };
         });
       }
+      let correctOptId = item.correct_option_id;
+      if (!correctOptId && item.correct_option_label) {
+        const found = opts.find((o: any) => o.option_label?.toUpperCase() === item.correct_option_label.toUpperCase());
+        if (found) correctOptId = found.id;
+      }
+      if (!correctOptId) correctOptId = opts[0]?.id;
+
       return {
         id: qId,
+        exam_id: item.exam_id || targetExamId,
         section_id: secId,
-        question_number: Number(item.question_number) || (MOCK_QUESTIONS.length + idx + 1),
+        question_number: Number(item.question_number) || (existingForExam.length + idx + 1),
         question_text: item.question_text || item.text || 'Untitled Question',
         difficulty: item.difficulty || 'medium',
         topic: item.topic || 'General Topic',
@@ -547,16 +671,25 @@ export const adminService = {
         explanation: item.explanation || '',
         image_url: item.image_url || null,
         options: opts,
-        correct_option_id: opts[0]?.id,
+        correct_option_id: correctOptId,
         answer_explanation: item.explanation || '',
       };
     });
 
-    MOCK_QUESTIONS.push(...processed);
-    recalculateMockExam();
+    if (replaceMode && targetExamId) {
+      MOCK_QUESTIONS = [...MOCK_QUESTIONS.filter((q) => q.exam_id !== targetExamId), ...processed];
+    } else if (replaceMode) {
+      MOCK_QUESTIONS = processed;
+    } else {
+      MOCK_QUESTIONS.push(...processed);
+    }
+
     return {
       success: true,
       uploaded_count: processed.length,
+      skipped_excess_count: skippedExcess,
+      exam_limit: examLimit,
+      total_exam_questions: MOCK_QUESTIONS.filter((q) => !targetExamId || q.exam_id === targetExamId).length,
       total_questions: MOCK_QUESTIONS.length,
       questions: MOCK_QUESTIONS,
     };
@@ -564,18 +697,7 @@ export const adminService = {
 
   async deleteQuestion(id: string): Promise<void> {
     await apiCall(`/api/questions/${id}`, { method: 'DELETE' });
-    const existing = MOCK_QUESTIONS.find((q) => q.id === id);
-    const secId = existing?.section_id;
-
     MOCK_QUESTIONS = MOCK_QUESTIONS.filter((q) => q.id !== id);
-
-    if (secId) {
-      const targetSec = MOCK_SECTIONS.find((s) => s.id === secId);
-      if (targetSec) {
-        targetSec.question_count = MOCK_QUESTIONS.filter((q) => q.section_id === secId).length;
-      }
-    }
-    recalculateMockExam();
   },
 
   // ----------------------------------------------------------------------------
