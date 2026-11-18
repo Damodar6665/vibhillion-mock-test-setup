@@ -25,6 +25,8 @@ import {
   Save,
   Sparkles,
   ShieldAlert,
+  BarChart3,
+  RefreshCw,
 } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import { ExamSection, Exam, Category } from '@vibhillion/shared';
@@ -32,6 +34,8 @@ import {
   divideTotalAcrossSections,
   getDefaultSectionNames,
   distributeQuestionsAcrossSections,
+  inferQuestionTopic,
+  buildSectionTopicAnalysis,
   SectionAllocationConfig,
   DistributionMode,
 } from '../utils/questionDistributor';
@@ -46,6 +50,7 @@ export const QuestionsPage: React.FC = () => {
   const [selectedExamId, setSelectedExamId] = useState<string>(examIdParam);
   const [sections, setSections] = useState<ExamSection[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string>('');
+  const [selectedTopicFilter, setSelectedTopicFilter] = useState<string>('');
   const [questions, setQuestions] = useState<any[]>([]);
   const [allExamQuestions, setAllExamQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,6 +206,7 @@ export const QuestionsPage: React.FC = () => {
     const exId = e.target.value;
     setSelectedExamId(exId);
     setSelectedSectionId('');
+    setSelectedTopicFilter('');
     setAllocationFeedback(null);
     setSearchParams(exId ? { exam_id: exId } : {});
     loadData(exId);
@@ -209,11 +215,60 @@ export const QuestionsPage: React.FC = () => {
   const handleSelectSection = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const secId = e.target.value;
     setSelectedSectionId(secId);
+    setSelectedTopicFilter('');
     const secQs = secId === 'all' ? allExamQuestions : allExamQuestions.filter((q) => q.section_id === secId);
     setQuestions(secQs);
   };
 
-  // Auto-divide examTotalLimit across sectionCountInput (works smoothly from both main panel and modal)
+  // Resize section count WITHOUT overwriting existing custom per-section question counts!
+  const handleResizeSectionCount = (nextCount: number) => {
+    const safeSecCount = Math.max(1, Math.min(20, Math.floor(Number(nextCount) || 1)));
+    const defaultNames = getDefaultSectionNames(safeSecCount);
+    const currentExamObj = exams.find((e) => e.id === selectedExamId);
+    const perSecDur = Math.max(60, Math.round((Number(currentExamObj?.total_duration_seconds) || 3600) / safeSecCount));
+
+    setSectionCountInput(safeSecCount);
+    setSectionCountText(String(safeSecCount));
+    setBulkActionError(null);
+
+    setSectionAllocations((prev) => {
+      if (safeSecCount <= prev.length) {
+        return prev.slice(0, safeSecCount).map((s, idx) => ({ ...s, display_order: idx + 1 }));
+      }
+      const existingSum = prev.reduce((sum, s) => sum + (Number(s.question_count) || 0), 0);
+      const remaining = Math.max(0, (parseInt(examTotalText, 10) || examTotalLimit || 0) - existingSum);
+      const addedCount = safeSecCount - prev.length;
+      const addedCounts = remaining > 0 ? divideTotalAcrossSections(remaining, addedCount) : Array(addedCount).fill(0);
+
+      const extras: SectionAllocationConfig[] = addedCounts.map((cnt, offset) => {
+        const idx = prev.length + offset;
+        return {
+          id: `sec-new-${Date.now()}-${idx + 1}`,
+          name: defaultNames[idx],
+          display_order: idx + 1,
+          question_count: cnt,
+          duration_seconds: perSecDur,
+          marks_per_correct: Number(currentExamObj?.positive_marks) || 2.0,
+          negative_marks_per_wrong: Number(currentExamObj?.negative_marks) || 0.5,
+        };
+      });
+      return [...prev, ...extras];
+    });
+  };
+
+  // Sync Whole Exam Question Limit to equal the sum of custom section counts
+  const handleSyncTotalToSectionSum = () => {
+    const sum = Math.max(1, sectionAllocations.reduce((acc, s) => acc + (Number(s.question_count) || 0), 0));
+    setExamTotalLimit(sum);
+    setExamTotalText(String(sum));
+    setBulkActionError(null);
+    setAllocationFeedback({
+      type: 'success',
+      text: `Updated Whole Exam Limit to ${sum} Qs to match your custom section counts.`,
+    });
+  };
+
+  // Optional equal split shortcut (only runs if explicitly clicked)
   const handleAutoDivideSections = (
     targetTotal?: number,
     targetSecCount?: number,
@@ -249,18 +304,67 @@ export const QuestionsPage: React.FC = () => {
       const summary = nextAllocations.map((s) => `${s.name}: ${s.question_count}`).join(' • ');
       setAllocationFeedback({
         type: 'success',
-        text: `Divided ${safeTotal} questions across ${safeSecCount} section(s) → ${summary}`,
+        text: `Split ${safeTotal} questions equally across ${safeSecCount} section(s) → ${summary}`,
       });
     }
 
     return nextAllocations;
   };
 
-  // Divide AND immediately save to backend so changes persist right away
-  const handleDivideAndSave = async () => {
-    const divided = handleAutoDivideSections(undefined, undefined, false);
+  // Save custom section counts AND re-divide existing uploaded questions across sections as per each section's custom count
+  const handleRedivideExistingByCustomCounts = async () => {
     const parsedTotal = Math.max(1, Math.floor(parseInt(examTotalText, 10) || examTotalLimit || 1));
-    await handleSaveExamAndSectionCounts(false, parsedTotal, divided);
+    const syncedSections = await handleSaveExamAndSectionCounts(false, parsedTotal, sectionAllocations);
+    if (!syncedSections || syncedSections.length === 0) return;
+
+    if (allExamQuestions.length === 0) {
+      setAllocationFeedback({
+        type: 'success',
+        text: `Saved custom section counts (${syncedSections.map((s) => `${s.name}: ${s.question_count}`).join(', ')}). Now click "Bulk Upload" to upload questions.`,
+      });
+      return;
+    }
+
+    try {
+      setSavingAllocation(true);
+      const distribution = distributeQuestionsAcrossSections({
+        rawQuestions: allExamQuestions,
+        sections: syncedSections.map((s, idx) => ({
+          id: s.id,
+          name: s.name,
+          display_order: s.display_order || idx + 1,
+          question_count: Number(s.question_count) || 0,
+          duration_seconds: Number(s.duration_seconds) || 900,
+          marks_per_correct: Number(s.marks_per_correct) || 2.0,
+          negative_marks_per_wrong: Number(s.negative_marks_per_wrong) || 0.5,
+        })),
+        examLimit: parsedTotal,
+        existingQuestions: [],
+        replaceMode: true,
+        mode: distributionMode,
+        examId: selectedExamId,
+      });
+
+      await adminService.bulkUploadQuestions({
+        exam_id: selectedExamId,
+        exam_question_limit: parsedTotal,
+        questions: distribution.assignedQuestions,
+        replace: true,
+      });
+
+      await loadData(selectedExamId);
+      setSavingAllocation(false);
+      const summary = distribution.sectionBreakdown
+        .map((b) => `${b.section_name}: ${b.assigned_now}/${b.target_count}`)
+        .join(' • ');
+      setAllocationFeedback({
+        type: 'success',
+        text: `Applied custom counts & re-divided ${distribution.acceptedCount} questions → ${summary}`,
+      });
+    } catch (err: any) {
+      setSavingAllocation(false);
+      setAllocationFeedback({ type: 'error', text: err?.message || 'Failed to re-divide questions.' });
+    }
   };
 
   const handleAllocationFieldChange = (
@@ -268,6 +372,7 @@ export const QuestionsPage: React.FC = () => {
     field: 'name' | 'question_count',
     value: string | number
   ) => {
+    setBulkActionError(null);
     setSectionAllocations((prev) =>
       prev.map((sec, i) =>
         i === idx
@@ -284,6 +389,22 @@ export const QuestionsPage: React.FC = () => {
     () => sectionAllocations.reduce((sum, s) => sum + (Number(s.question_count) || 0), 0),
     [sectionAllocations]
   );
+
+  // Section-wise Topic-wise Analysis for ALL questions of the active exam
+  const sectionTopicAnalysis = useMemo(
+    () => buildSectionTopicAnalysis(sections, allExamQuestions),
+    [sections, allExamQuestions]
+  );
+
+  // Questions displayed in table (respects both Section filter AND clicked Topic pill filter)
+  const displayedQuestions = useMemo(() => {
+    if (!selectedTopicFilter) return questions;
+    return questions.filter((q) => {
+      const secName = sections.find((s) => s.id === q.section_id)?.name || '';
+      const resolved = inferQuestionTopic(q.question_text || '', secName, q.topic);
+      return resolved.topic.toLowerCase() === selectedTopicFilter.toLowerCase();
+    });
+  }, [questions, selectedTopicFilter, sections]);
 
   const handleSaveExamAndSectionCounts = async (
     silent = false,
@@ -833,9 +954,141 @@ export const QuestionsPage: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* EXAM & SECTION-WISE QUESTION COUNT ALLOCATION PANEL (CONFIGURE BEFORE UPLOAD) */}
+      {/* TOP OF PAGE: SECTION-WISE TOPIC-WISE ANALYSIS OF ALL EXAM QUESTIONS       */}
       {/* ========================================================================= */}
-      <div className="content-card p-5 mb-4 border-2 border-indigo-200 bg-gradient-to-br from-white via-indigo-50/30 to-teal-50/20">
+      {sectionTopicAnalysis.length > 0 && (
+        <div className="content-card p-5 mb-4 border-2 border-teal-200 bg-white">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-200">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center">
+                <BarChart3 size={18} />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-slate-900">
+                  Topic-Wise Analysis by Section — All Questions ({allExamQuestions.length} Qs)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Complete topic-wise breakdown for every section in this exam. Click any topic pill to filter questions below.
+                </p>
+              </div>
+            </div>
+
+            {selectedTopicFilter && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs bg-teal-100 text-teal-800 font-bold px-2.5 py-1 rounded-full border border-teal-300">
+                  Active Topic: {selectedTopicFilter}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTopicFilter('')}
+                  className="btn btn-secondary btn-sm text-xs"
+                >
+                  Clear Topic Filter
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            {sectionTopicAnalysis.map((secGroup, sIdx) => (
+              <div
+                key={secGroup.section_id}
+                className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col justify-between gap-2.5"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-200">
+                    <div>
+                      <span className="text-[10px] font-black bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded">
+                        SEC {sIdx + 1}
+                      </span>
+                      <h4 className="font-bold text-xs text-slate-900 mt-1">
+                        {secGroup.section_name}
+                      </h4>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-black text-indigo-700">
+                        {secGroup.uploaded_count} / {secGroup.target_count} Qs
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-semibold">
+                        {secGroup.unique_topic_count} Topic(s)
+                      </div>
+                    </div>
+                  </div>
+
+                  {secGroup.topics.length === 0 ? (
+                    <div className="text-[11px] text-slate-400 py-3 text-center">
+                      No questions uploaded in this section yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5" style={{ maxHeight: '190px', overflowY: 'auto' }}>
+                      {secGroup.topics.map((t) => {
+                        const isTopicSelected =
+                          selectedSectionId === secGroup.section_id &&
+                          selectedTopicFilter.toLowerCase() === t.topic.toLowerCase();
+                        return (
+                          <button
+                            key={t.topic}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSectionId(secGroup.section_id);
+                              setQuestions(allExamQuestions.filter((q) => q.section_id === secGroup.section_id));
+                              setSelectedTopicFilter(isTopicSelected ? '' : t.topic);
+                            }}
+                            className={`w-full text-left p-2 rounded-lg border transition-all cursor-pointer ${
+                              isTopicSelected
+                                ? 'bg-teal-600 text-white border-teal-700'
+                                : 'bg-white border-slate-200 text-slate-800'
+                            }`}
+                            title={`Click to view ${t.count} question(s) in ${secGroup.section_name} → ${t.topic}`}
+                          >
+                            <div className="flex items-center justify-between gap-2 text-[11px]">
+                              <span className="font-bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {t.topic}
+                              </span>
+                              <span
+                                className={`font-black px-1.5 py-0.5 rounded whitespace-nowrap ${
+                                  isTopicSelected
+                                    ? 'bg-white text-teal-800'
+                                    : 'bg-indigo-50 text-indigo-800'
+                                }`}
+                              >
+                                {t.count} Qs ({t.percentage}%)
+                              </span>
+                            </div>
+                            <div
+                              className="w-full h-1.5 rounded-full overflow-hidden mt-1"
+                              style={{ backgroundColor: isTopicSelected ? 'rgba(255,255,255,0.25)' : '#e2e8f0' }}
+                            >
+                              <div
+                                className="h-full"
+                                style={{
+                                  width: `${Math.max(6, t.percentage)}%`,
+                                  backgroundColor: isTopicSelected ? '#ffffff' : '#0d9488',
+                                }}
+                              />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] font-bold pt-2 border-t border-slate-200 text-slate-500">
+                  <span className="text-emerald-700">Easy: {secGroup.easy}</span>
+                  <span className="text-amber-600">Med: {secGroup.medium}</span>
+                  <span className="text-red-600">Hard: {secGroup.hard}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* EXAM & CUSTOM SECTION-WISE QUESTION COUNT ALLOCATION PANEL                */}
+      {/* ========================================================================= */}
+      <div className="content-card p-5 mb-4 border-2 border-indigo-200 bg-white">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 mb-4 border-b border-indigo-100">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
@@ -843,10 +1096,10 @@ export const QuestionsPage: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold text-sm text-slate-900">
-                Exam & Section-Wise Question Count Setup
+                Exam & Custom Section-Wise Question Count Setup
               </h3>
               <p className="text-xs text-slate-500">
-                Set total exam question limit & divide across sections before bulk uploading. Only the exam question count limit will be taken during upload.
+                Set the whole-exam limit and assign any custom question count to EACH section (does not need to be equal — e.g., 30, 20, 35, 15). Bulk upload divides strictly per each section&apos;s given count.
               </p>
             </div>
           </div>
@@ -859,7 +1112,17 @@ export const QuestionsPage: React.FC = () => {
               className="btn btn-teal btn-sm flex items-center gap-1.5 text-xs"
             >
               <Save size={14} />
-              <span>{savingAllocation ? 'Saving...' : 'Save Exam & Section Counts'}</span>
+              <span>{savingAllocation ? 'Saving...' : 'Save Custom Counts'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleRedivideExistingByCustomCounts}
+              disabled={savingAllocation}
+              className="btn btn-secondary btn-sm flex items-center gap-1.5 text-xs border-indigo-300 text-indigo-700"
+              title="Save custom section counts and re-divide existing uploaded questions across sections as per each section's given count"
+            >
+              <RefreshCw size={13} />
+              <span>Divide by Custom Counts</span>
             </button>
             <button
               type="button"
@@ -867,7 +1130,7 @@ export const QuestionsPage: React.FC = () => {
               className="btn btn-indigo btn-sm flex items-center gap-1.5 text-xs"
             >
               <Upload size={14} />
-              <span>Bulk Upload & Auto-Divide</span>
+              <span>Bulk Upload by Section Counts</span>
             </button>
           </div>
         </div>
@@ -894,7 +1157,7 @@ export const QuestionsPage: React.FC = () => {
 
         {/* Whole Exam Question Limit + Number of Sections Controls */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <div className="p-3 bg-white rounded-lg border border-slate-200">
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
             <label className="text-xs font-bold text-slate-700 block mb-1">
               1. Whole Exam Question Count (Upload Limit)
             </label>
@@ -924,9 +1187,9 @@ export const QuestionsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="p-3 bg-white rounded-lg border border-slate-200">
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
             <label className="text-xs font-bold text-slate-700 block mb-1">
-              2. Number of Sections to Divide Into
+              2. Number of Sections (Preserves Custom Counts)
             </label>
             <div className="flex items-center gap-2 flex-wrap">
               <input
@@ -940,7 +1203,7 @@ export const QuestionsPage: React.FC = () => {
                   setSectionCountText(raw);
                   const n = parseInt(raw, 10);
                   if (!Number.isNaN(n) && n >= 1 && n <= 20) {
-                    handleAutoDivideSections(parseInt(examTotalText, 10) || examTotalLimit, n, false);
+                    handleResizeSectionCount(n);
                   }
                 }}
                 onBlur={() => {
@@ -951,14 +1214,11 @@ export const QuestionsPage: React.FC = () => {
               />
               <button
                 type="button"
-                onClick={handleDivideAndSave}
-                disabled={savingAllocation}
-                className="btn btn-indigo btn-sm text-xs whitespace-nowrap"
-                title="Divide whole exam questions equally across sections and save immediately"
+                onClick={() => handleAutoDivideSections(undefined, undefined, true)}
+                className="btn btn-secondary btn-sm text-xs whitespace-nowrap"
+                title="Optional shortcut: split total questions equally across all sections"
               >
-                {savingAllocation
-                  ? 'Dividing...'
-                  : `Divide Equally (${examTotalLimit} ÷ ${sectionCountInput})`}
+                Optional: Equal Split ({examTotalLimit} ÷ {sectionCountInput})
               </button>
             </div>
           </div>
@@ -976,21 +1236,32 @@ export const QuestionsPage: React.FC = () => {
               ) : (
                 <AlertCircle size={15} className="text-amber-600" />
               )}
-              <span>Section Sum Verification</span>
+              <span>Custom Section Sum Check</span>
             </div>
             <div className="text-xs mt-1">
-              Sections Total: <strong>{allocatedSectionSum} Qs</strong> / Exam Limit:{' '}
+              Custom Sections Sum: <strong>{allocatedSectionSum} Qs</strong> / Exam Limit:{' '}
               <strong>{examTotalLimit} Qs</strong>
               {allocatedSectionSum !== Number(examTotalLimit) && (
-                <span className="block text-[11px] font-bold text-amber-800 mt-0.5">
-                  Adjust section counts or click "Divide Equally" to match {examTotalLimit}.
-                </span>
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleSyncTotalToSectionSum}
+                    className="btn btn-teal btn-sm text-[11px] py-1 px-2"
+                  >
+                    Set Exam Limit = {allocatedSectionSum}
+                  </button>
+                  <span className="text-[11px] font-semibold">
+                    ({examTotalLimit - allocatedSectionSum > 0
+                      ? `${examTotalLimit - allocatedSectionSum} Qs unassigned`
+                      : `${allocatedSectionSum - examTotalLimit} Qs over limit`})
+                  </span>
+                </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Section-Wise Editable Grid */}
+        {/* Section-Wise Custom Count Editable Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           {sectionAllocations.map((sec, idx) => {
             const uploadedInSec = allExamQuestions.filter((q) => q.section_id === sec.id).length;
@@ -1005,7 +1276,11 @@ export const QuestionsPage: React.FC = () => {
                     SECTION {idx + 1}
                   </span>
                   <span className="text-[11px] font-bold text-slate-600">
-                    Uploaded: <strong className={uploadedInSec >= sec.question_count && sec.question_count > 0 ? 'text-emerald-700' : 'text-indigo-700'}>{uploadedInSec}</strong> / {sec.question_count}
+                    Uploaded:{' '}
+                    <strong className={uploadedInSec >= sec.question_count && sec.question_count > 0 ? 'text-emerald-700' : 'text-indigo-700'}>
+                      {uploadedInSec}
+                    </strong>{' '}
+                    / {sec.question_count}
                   </span>
                 </div>
 
@@ -1018,11 +1293,11 @@ export const QuestionsPage: React.FC = () => {
                 />
 
                 <div className="flex items-center justify-between gap-2">
-                  <label className="text-[11px] font-semibold text-slate-500">Question Count:</label>
+                  <label className="text-[11px] font-bold text-indigo-900">Custom Count:</label>
                   <input
                     type="number"
                     min="0"
-                    className="form-input w-20 py-1 px-2 text-xs font-black text-center"
+                    className="form-input w-20 py-1 px-2 text-xs font-black text-center border-indigo-300"
                     value={sec.question_count}
                     onChange={(e) => handleAllocationFieldChange(idx, 'question_count', e.target.value)}
                   />
@@ -1061,16 +1336,27 @@ export const QuestionsPage: React.FC = () => {
               );
             })}
           </select>
+
+          {selectedTopicFilter && (
+            <button
+              type="button"
+              onClick={() => setSelectedTopicFilter('')}
+              className="btn btn-teal btn-sm text-xs flex items-center gap-1"
+            >
+              <span>Topic: {selectedTopicFilter}</span>
+              <span>×</span>
+            </button>
+          )}
         </div>
 
         <div className="text-xs text-slate-500 font-semibold">
-          Showing: <strong>{questions.length}</strong> Qs | Whole Exam:{' '}
+          Showing: <strong>{displayedQuestions.length}</strong> Qs | Whole Exam:{' '}
           <strong>
             {allExamQuestions.length} / {activeExamLimit}
           </strong>{' '}
           | Image-enabled:{' '}
           <strong>
-            {questions.filter((q) => q.image_url || q.options?.some((o: any) => o.image_url)).length}
+            {displayedQuestions.filter((q) => q.image_url || q.options?.some((o: any) => o.image_url)).length}
           </strong>
         </div>
       </div>
@@ -1079,11 +1365,11 @@ export const QuestionsPage: React.FC = () => {
       <div className="content-card">
         {loading ? (
           <div className="p-8 text-center text-slate-500">Loading section questions...</div>
-        ) : questions.length === 0 ? (
+        ) : displayedQuestions.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
             <HelpCircle size={40} className="mx-auto mb-2 text-slate-400" />
-            <h3 className="text-sm font-bold text-slate-700">No questions in this section</h3>
-            <p className="text-xs text-slate-500 mt-1">Use "Add Question" or "Bulk Upload JSON" to populate this section.</p>
+            <h3 className="text-sm font-bold text-slate-700">No questions match this filter</h3>
+            <p className="text-xs text-slate-500 mt-1">Use "Add Question" or "Bulk Upload" to populate this section, or clear the active topic filter.</p>
           </div>
         ) : (
           <div className="table-responsive">
@@ -1099,9 +1385,11 @@ export const QuestionsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {questions.map((q) => {
+                {displayedQuestions.map((q) => {
                   const hasImage = Boolean(q.image_url);
                   const hasOptionImages = q.options?.some((o: any) => Boolean(o.image_url));
+                  const secName = sections.find((s) => s.id === q.section_id)?.name || '';
+                  const resolvedTopic = inferQuestionTopic(q.question_text || '', secName, q.topic);
 
                   return (
                     <tr key={q.id}>
@@ -1135,8 +1423,8 @@ export const QuestionsPage: React.FC = () => {
                         )}
                       </td>
                       <td>
-                        <div className="text-xs font-bold text-slate-700">{q.topic || 'General'}</div>
-                        <div className="text-[11px] text-slate-400">{q.subtopic || 'Concept'}</div>
+                        <div className="text-xs font-bold text-slate-700">{resolvedTopic.topic}</div>
+                        <div className="text-[11px] text-slate-400">{q.subtopic || resolvedTopic.subtopic || 'Concept'}</div>
                         <span
                           className={`text-[10px] font-bold px-1.5 py-0.5 rounded mt-1 inline-block ${
                             q.difficulty === 'hard'
@@ -1289,7 +1577,7 @@ export const QuestionsPage: React.FC = () => {
                           setBulkActionError(null);
                           const n = parseInt(raw, 10);
                           if (!Number.isNaN(n) && n >= 1 && n <= 20) {
-                            handleAutoDivideSections(parseInt(examTotalText, 10) || examTotalLimit, n, false);
+                            handleResizeSectionCount(n);
                           }
                         }}
                         onBlur={() => {
@@ -1301,9 +1589,10 @@ export const QuestionsPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleAutoDivideSections(undefined, undefined, true)}
-                        className="btn btn-indigo btn-sm text-[11px] py-1 px-2 whitespace-nowrap"
+                        className="btn btn-secondary btn-sm text-[11px] py-1 px-2 whitespace-nowrap"
+                        title="Optional: split equally"
                       >
-                        Auto-Divide
+                        Equal Split
                       </button>
                     </div>
                   </div>
@@ -1317,24 +1606,37 @@ export const QuestionsPage: React.FC = () => {
                       value={distributionMode}
                       onChange={(e) => setDistributionMode(e.target.value as DistributionMode)}
                     >
-                      <option value="content_and_count">Content + Section Count (Smart)</option>
-                      <option value="sequential">Sequential by Section Count</option>
+                      <option value="content_and_count">Content + Custom Section Count (Smart)</option>
+                      <option value="sequential">Sequential by Custom Section Count</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="text-[11px] text-indigo-900 font-medium">
+                  Enter any custom count for each section below (e.g., <strong>30, 20, 35, 15</strong>). Bulk upload will divide and upload strictly as per each section&apos;s given count.
                 </div>
 
                 {allocatedSectionSum !== Number(examTotalLimit) && (
                   <div className="p-2 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 flex items-center justify-between gap-2 flex-wrap">
                     <span>
-                      <strong>Mismatch:</strong> Sections sum is <strong>{allocatedSectionSum}</strong>, but Whole Exam Limit is <strong>{examTotalLimit}</strong>.
+                      <strong>Mismatch:</strong> Custom sections sum is <strong>{allocatedSectionSum}</strong>, but Whole Exam Limit is <strong>{examTotalLimit}</strong>.
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleAutoDivideSections(undefined, undefined, true)}
-                      className="btn btn-indigo btn-sm text-xs py-1 px-2"
-                    >
-                      Auto-Divide Now ({examTotalLimit} ÷ {sectionCountInput})
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleSyncTotalToSectionSum}
+                        className="btn btn-teal btn-sm text-xs py-1 px-2"
+                      >
+                        Set Exam Limit = {allocatedSectionSum}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAutoDivideSections(undefined, undefined, true)}
+                        className="btn btn-secondary btn-sm text-xs py-1 px-2"
+                      >
+                        Equal Split ({examTotalLimit} ÷ {sectionCountInput})
+                      </button>
+                    </div>
                   </div>
                 )}
 

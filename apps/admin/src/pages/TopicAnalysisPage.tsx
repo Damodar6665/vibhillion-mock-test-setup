@@ -21,14 +21,21 @@ import {
   Lightbulb,
   Zap,
   Check,
+  BarChart3,
+  GraduationCap,
 } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import {
+  Exam,
   ExamSection,
   FULL_100_SECTIONS,
   TopicOnlineAnalysis,
   getTopicOnlineAnalysis,
 } from '@vibhillion/shared';
+import {
+  inferQuestionTopic,
+  buildSectionTopicAnalysis,
+} from '../utils/questionDistributor';
 
 interface TopicRow {
   key: string;
@@ -45,6 +52,8 @@ interface TopicRow {
 }
 
 export const TopicAnalysisPage: React.FC = () => {
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [selectedExamId, setSelectedExamId] = useState<string>('all');
   const [questions, setQuestions] = useState<any[]>([]);
   const [sections, setSections] = useState<ExamSection[]>([]);
   const [topicAnalyses, setTopicAnalyses] = useState<Record<string, TopicOnlineAnalysis>>({});
@@ -70,11 +79,13 @@ export const TopicAnalysisPage: React.FC = () => {
   async function loadData() {
     setLoading(true);
     try {
-      const [qData, secData, analysesData] = await Promise.all([
+      const [examsData, qData, secData, analysesData] = await Promise.all([
+        adminService.getExams(),
         adminService.getQuestions(),
         adminService.getSections(),
         adminService.getTopicAnalyses(),
       ]);
+      setExams(examsData || []);
       setQuestions(qData);
       setSections(secData && secData.length > 0 ? secData : FULL_100_SECTIONS);
       setTopicAnalyses(analysesData || {});
@@ -83,26 +94,43 @@ export const TopicAnalysisPage: React.FC = () => {
     }
   }
 
+  const scopedSections = useMemo(() => {
+    const allSecs = sections.length > 0 ? sections : FULL_100_SECTIONS;
+    if (selectedExamId === 'all') return allSecs;
+    return allSecs.filter((s) => s.exam_id === selectedExamId);
+  }, [sections, selectedExamId]);
+
+  const scopedQuestions = useMemo(() => {
+    if (selectedExamId === 'all') return questions;
+    const secIds = new Set(scopedSections.map((s) => s.id));
+    return questions.filter((q) => q.exam_id === selectedExamId || secIds.has(q.section_id));
+  }, [questions, selectedExamId, scopedSections]);
+
+  const sectionTopicBreakdown = useMemo(
+    () => buildSectionTopicAnalysis(scopedSections, scopedQuestions),
+    [scopedSections, scopedQuestions]
+  );
+
   const sectionMap = useMemo(() => {
     const map: Record<string, string> = {};
-    const allSecs = sections.length > 0 ? sections : FULL_100_SECTIONS;
-    allSecs.forEach((s) => {
+    scopedSections.forEach((s) => {
       map[s.id] = s.name;
     });
     return map;
-  }, [sections]);
+  }, [scopedSections]);
 
-  // Aggregate topics dynamically across all questions
+  // Aggregate topics dynamically across all scoped questions
   const topicsData = useMemo<TopicRow[]>(() => {
     const map = new Map<
       string,
       { topic: string; subtopic: string; sectionName: string; count: number }
     >();
 
-    questions.forEach((q) => {
-      const topicName = q.topic || 'General Topic';
-      const subtopicName = q.subtopic || '';
+    scopedQuestions.forEach((q) => {
       const secName = sectionMap[q.section_id] || q.section_name || 'General';
+      const inferred = inferQuestionTopic(q.question_text || q.text || '', secName, q.topic);
+      const topicName = inferred.topic;
+      const subtopicName = q.subtopic || inferred.subtopic || '';
       const key = `${secName}:::${topicName}:::${subtopicName}`;
 
       if (!map.has(key)) {
@@ -219,7 +247,7 @@ export const TopicAnalysisPage: React.FC = () => {
     });
 
     return rows.sort((a, b) => b.questionCount - a.questionCount);
-  }, [questions, sectionMap, topicAnalyses]);
+  }, [scopedQuestions, sectionMap, topicAnalyses]);
 
   // Filtered rows
   const filteredTopics = useMemo(() => {
@@ -375,6 +403,155 @@ export const TopicAnalysisPage: React.FC = () => {
             <Zap size={14} />
             <span>{syncing ? 'Syncing...' : 'Sync to Student App'}</span>
           </button>
+        </div>
+      </div>
+
+      {/* TOP OF PAGE: SECTION-WISE TOPIC-WISE ANALYSIS OF ALL QUESTIONS */}
+      <div className="content-card p-5 mb-6 border-2 border-teal-200 bg-white">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 mb-4 border-b border-slate-200">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center">
+              <BarChart3 size={18} />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">
+                Section-Wise Topic-Wise Analysis — All Questions ({scopedQuestions.length} Qs)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Complete topic-wise breakdown grouped by each section. Click any topic to filter the detailed list below.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <GraduationCap size={15} className="text-teal-700" />
+              <span>Exam:</span>
+            </div>
+            <select
+              className="form-input text-xs font-bold"
+              style={{ minWidth: '220px', width: 'auto' }}
+              value={selectedExamId}
+              onChange={(e) => {
+                setSelectedExamId(e.target.value);
+                setSelectedSection('all');
+                setSearchQuery('');
+              }}
+            >
+              <option value="all">All Exams ({questions.length} Qs)</option>
+              {exams.map((ex) => (
+                <option key={ex.id} value={ex.id}>
+                  {ex.title}
+                </option>
+              ))}
+            </select>
+            {(selectedSection !== 'all' || searchQuery) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSection('all');
+                  setSearchQuery('');
+                }}
+                className="btn btn-secondary btn-sm text-xs"
+              >
+                Reset Filter
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          {sectionTopicBreakdown.map((secGroup, idx) => (
+            <div
+              key={secGroup.section_id}
+              className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col justify-between gap-2.5"
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-200">
+                  <div>
+                    <span className="text-[10px] font-black bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded">
+                      SECTION {idx + 1}
+                    </span>
+                    <h4 className="font-bold text-xs text-slate-900 mt-1">{secGroup.section_name}</h4>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-black text-indigo-700">{secGroup.uploaded_count} Qs</div>
+                    <div className="text-[10px] text-slate-500 font-semibold">
+                      {secGroup.unique_topic_count} Topics
+                    </div>
+                  </div>
+                </div>
+
+                {secGroup.topics.length === 0 ? (
+                  <div className="text-[11px] text-slate-400 py-3 text-center">
+                    No questions in this section yet.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5" style={{ maxHeight: '190px', overflowY: 'auto' }}>
+                    {secGroup.topics.map((t) => {
+                      const isActive =
+                        selectedSection === secGroup.section_name &&
+                        searchQuery.toLowerCase() === t.topic.toLowerCase();
+                      return (
+                        <button
+                          key={t.topic}
+                          type="button"
+                          onClick={() => {
+                            if (isActive) {
+                              setSelectedSection('all');
+                              setSearchQuery('');
+                            } else {
+                              setSelectedSection(secGroup.section_name);
+                              setSearchQuery(t.topic);
+                            }
+                          }}
+                          className={`w-full text-left p-2 rounded-lg border transition-all cursor-pointer ${
+                            isActive
+                              ? 'bg-teal-600 text-white border-teal-700'
+                              : 'bg-white border-slate-200 text-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 text-[11px]">
+                            <span
+                              className="font-bold"
+                              style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            >
+                              {t.topic}
+                            </span>
+                            <span
+                              className={`font-black px-1.5 py-0.5 rounded whitespace-nowrap ${
+                                isActive ? 'bg-white text-teal-800' : 'bg-indigo-50 text-indigo-800'
+                              }`}
+                            >
+                              {t.count} Qs ({t.percentage}%)
+                            </span>
+                          </div>
+                          <div
+                            className="w-full h-1.5 rounded-full overflow-hidden mt-1"
+                            style={{ backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : '#e2e8f0' }}
+                          >
+                            <div
+                              className="h-full"
+                              style={{
+                                width: `${Math.max(6, t.percentage)}%`,
+                                backgroundColor: isActive ? '#ffffff' : '#0d9488',
+                              }}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] font-bold pt-2 border-t border-slate-200 text-slate-500">
+                <span className="text-emerald-700">Easy: {secGroup.easy}</span>
+                <span className="text-amber-600">Med: {secGroup.medium}</span>
+                <span className="text-red-600">Hard: {secGroup.hard}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

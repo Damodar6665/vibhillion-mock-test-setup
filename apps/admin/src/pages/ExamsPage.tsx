@@ -103,6 +103,29 @@ export const ExamsPage: React.FC = () => {
     return exams.filter((e) => e.category_id === selectedCategoryFilter);
   }, [exams, selectedCategoryFilter]);
 
+  // Resize sections count WITHOUT wiping existing custom section counts
+  const handleResizeSectionDrafts = (nextCount: number) => {
+    const safeSecCount = Math.max(1, Math.min(20, Math.floor(Number(nextCount) || 1)));
+    const defaultNames = getDefaultSectionNames(safeSecCount);
+    setSectionCountInput(safeSecCount);
+    setSectionCountText(String(safeSecCount));
+
+    setSectionDrafts((prev) => {
+      if (safeSecCount <= prev.length) {
+        return prev.slice(0, safeSecCount);
+      }
+      const existingSum = prev.reduce((sum, s) => sum + (Number(s.question_count) || 0), 0);
+      const remaining = Math.max(0, (parseInt(totalQuestionsText, 10) || totalQuestions || 0) - existingSum);
+      const addedCount = safeSecCount - prev.length;
+      const addedCounts = remaining > 0 ? divideTotalAcrossSections(remaining, addedCount) : Array(addedCount).fill(0);
+      const extras: SectionDraft[] = addedCounts.map((cnt, offset) => ({
+        name: defaultNames[prev.length + offset],
+        question_count: cnt,
+      }));
+      return [...prev, ...extras];
+    });
+  };
+
   const handleAutoDivideSections = (targetTotal?: number, targetSecCount?: number) => {
     const parsedTotal = targetTotal !== undefined ? targetTotal : (parseInt(totalQuestionsText, 10) || totalQuestions || 100);
     const parsedSec = targetSecCount !== undefined ? targetSecCount : (parseInt(sectionCountText, 10) || sectionCountInput || 1);
@@ -655,7 +678,7 @@ export const ExamsPage: React.FC = () => {
                           setSectionCountText(raw);
                           const n = parseInt(raw, 10);
                           if (!Number.isNaN(n) && n >= 1 && n <= 20) {
-                            handleAutoDivideSections(parseInt(totalQuestionsText, 10) || totalQuestions, n);
+                            handleResizeSectionDrafts(n);
                           }
                         }}
                         onBlur={() => {
@@ -667,12 +690,17 @@ export const ExamsPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleAutoDivideSections()}
-                        className="btn btn-indigo btn-sm text-xs whitespace-nowrap"
+                        className="btn btn-secondary btn-sm text-xs whitespace-nowrap"
+                        title="Optional shortcut: split total questions equally"
                       >
-                        Auto-Divide ({totalQuestions} ÷ {sectionCountInput})
+                        Optional: Equal Split ({totalQuestions} ÷ {sectionCountInput})
                       </button>
                     </div>
                   </div>
+
+                  <p className="text-[11px] text-indigo-900">
+                    Set any custom question count per section (e.g., 30, 20, 35, 15). Bulk upload will divide strictly per each section&apos;s given count.
+                  </p>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                     {sectionDrafts.map((sec, idx) => (
@@ -725,7 +753,23 @@ export const ExamsPage: React.FC = () => {
                       </span>
                     </div>
                     {sectionDraftSum !== Number(totalQuestions) && (
-                      <span>Must match Exam Total ({totalQuestions - sectionDraftSum > 0 ? `+${totalQuestions - sectionDraftSum} left` : `${sectionDraftSum - totalQuestions} over`})</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>
+                          ({totalQuestions - sectionDraftSum > 0 ? `+${totalQuestions - sectionDraftSum} left` : `${sectionDraftSum - totalQuestions} over`})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const sum = Math.max(1, sectionDraftSum);
+                            setTotalQuestions(sum);
+                            setTotalQuestionsText(String(sum));
+                            setTotalMarks(sum * positiveMarks);
+                          }}
+                          className="btn btn-teal btn-sm text-[11px] py-1 px-2"
+                        >
+                          Set Exam Total = {sectionDraftSum}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
