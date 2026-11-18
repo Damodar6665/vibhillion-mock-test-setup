@@ -45,39 +45,35 @@ copyDirSync(path.join(STUDENT_DIST, '_expo'), path.join(PAGES_DIR, '_expo'));
 console.log('🖼️ 2/5: Merging student assets...');
 copyDirSync(path.join(STUDENT_DIST, 'assets'), path.join(PAGES_DIR, 'assets'));
 
-// 3. Prepare student.html with proper title
-console.log('📄 3/5: Generating student.html, tests.html, mock-test.html...');
+// 3. Prepare student.html and tests.html with proper title
+console.log('📄 3/5: Generating student.html, tests.html...');
 let studentHtml = fs.readFileSync(path.join(STUDENT_DIST, 'index.html'), 'utf8');
 studentHtml = studentHtml.replace(
   /<title>.*?<\/title>/,
   '<title>VibhillionAI — Student Mock Test Portal</title>'
 );
 
-// Write student.html, tests.html, mock-test.html
 fs.writeFileSync(path.join(PAGES_DIR, 'student.html'), studentHtml, 'utf8');
 fs.writeFileSync(path.join(PAGES_DIR, 'tests.html'), studentHtml, 'utf8');
 fs.writeFileSync(path.join(PAGES_DIR, 'mock-test.html'), studentHtml, 'utf8');
 
-// Also create folders /student/index.html and /tests/index.html for direct folder routing
-const studentFolder = path.join(PAGES_DIR, 'student');
-fs.mkdirSync(studentFolder, { recursive: true });
-fs.writeFileSync(path.join(studentFolder, 'index.html'), studentHtml, 'utf8');
+// Ensure no conflicting directory names that break Cloudflare clean URLs
+if (fs.existsSync(path.join(PAGES_DIR, 'student'))) {
+  fs.rmSync(path.join(PAGES_DIR, 'student'), { recursive: true, force: true });
+}
+if (fs.existsSync(path.join(PAGES_DIR, 'tests'))) {
+  fs.rmSync(path.join(PAGES_DIR, 'tests'), { recursive: true, force: true });
+}
 
-const testsFolder = path.join(PAGES_DIR, 'tests');
-fs.mkdirSync(testsFolder, { recursive: true });
-fs.writeFileSync(path.join(testsFolder, 'index.html'), studentHtml, 'utf8');
-
-// 4. Update or write _redirects
+// 4. Update _redirects (SPA subroute fallback only)
 console.log('🔀 4/5: Updating Cloudflare Pages _redirects...');
-const redirectsContent = `# VibhillionAI Cloudflare Pages Redirects & Rewrites
+const redirectsContent = `# VibhillionAI Cloudflare Pages SPA Rewrites
+# Native clean URLs automatically map /student -> student.html and /tests -> tests.html.
+# Only subroutes require rewrite rules to avoid 404s:
 /student/*     /student.html  200
-/student       /student.html  200
-/tests/*       /student.html  200
-/tests         /student.html  200
-/mock-test/*   /student.html  200
-/mock-test     /student.html  200
+/tests/*       /tests.html    200
 /exam/*        /student.html  200
-/admin         /admin.html    200
+/auth/*        /student.html  200
 `;
 fs.writeFileSync(path.join(PAGES_DIR, '_redirects'), redirectsContent, 'utf8');
 
