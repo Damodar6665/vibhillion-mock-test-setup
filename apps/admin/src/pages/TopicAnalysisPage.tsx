@@ -70,6 +70,8 @@ export const TopicAnalysisPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'strong' | 'moderate' | 'weak'>('all');
 
   // Selected topic for viewing related questions
+  const [tableSectionFilter, setTableSectionFilter] = useState<string>('all');
+  const [tableTopicSearch, setTableTopicSearch] = useState<string>('');
   const [selectedTopicForQuestions, setSelectedTopicForQuestions] = useState<{
     topic: string;
     sectionName?: string;
@@ -146,9 +148,9 @@ export const TopicAnalysisPage: React.FC = () => {
 
     scopedQuestions.forEach((q) => {
       const secName = sectionMap[q.section_id] || q.section_name || 'General';
-      const inferred = inferQuestionTopic(q.question_text || q.text || '', secName, q.topic);
+      const inferred = inferQuestionTopic(q.question_text || q.text || '', secName, q.topic, q.subtopic);
       const topicName = inferred.topic;
-      const subtopicName = q.subtopic || inferred.subtopic || '';
+      const subtopicName = inferred.subtopic || '';
       const diff = String(q.difficulty || 'medium').toLowerCase();
       const key = `${secName}|||${topicName}`.toLowerCase();
 
@@ -191,6 +193,42 @@ export const TopicAnalysisPage: React.FC = () => {
       .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
   }, [scopedQuestions, sectionMap]);
 
+  // Unique section summary for Section Filter Pills above the Topic Name filter bar & table
+  const tableSectionTabs = useMemo(() => {
+    const map = new Map<string, { sectionName: string; topicCount: number; questionCount: number }>();
+    topicTableRows.forEach((row) => {
+      const sec = row.sectionName || 'General';
+      if (!map.has(sec)) {
+        map.set(sec, { sectionName: sec, topicCount: 0, questionCount: 0 });
+      }
+      const item = map.get(sec)!;
+      item.topicCount += 1;
+      item.questionCount += row.count;
+    });
+    return Array.from(map.values());
+  }, [topicTableRows]);
+
+  // Filtered Topic Names & Table rows (respects Section Filter Pill + Topic Name Search)
+  const filteredTopicTableRows = useMemo(() => {
+    return topicTableRows.filter((row) => {
+      if (
+        tableSectionFilter !== 'all' &&
+        row.sectionName.toLowerCase() !== tableSectionFilter.toLowerCase()
+      ) {
+        return false;
+      }
+      if (tableTopicSearch.trim()) {
+        const q = tableTopicSearch.trim().toLowerCase();
+        return (
+          row.topic.toLowerCase().includes(q) ||
+          row.subtopic.toLowerCase().includes(q) ||
+          row.sectionName.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [topicTableRows, tableSectionFilter, tableTopicSearch]);
+
   // Related questions for the clicked topic name
   const selectedTopicQuestions = useMemo(() => {
     if (!selectedTopicForQuestions) return [];
@@ -200,7 +238,7 @@ export const TopicAnalysisPage: React.FC = () => {
     return scopedQuestions.filter((q) => {
       const secName = sectionMap[q.section_id] || q.section_name || 'General';
       if (targetSec && secName.toLowerCase() !== targetSec) return false;
-      const inferred = inferQuestionTopic(q.question_text || q.text || '', secName, q.topic);
+      const inferred = inferQuestionTopic(q.question_text || q.text || '', secName, q.topic, q.subtopic);
       return inferred.topic.toLowerCase() === targetTopic;
     });
   }, [selectedTopicForQuestions, scopedQuestions, sectionMap]);
@@ -231,9 +269,9 @@ export const TopicAnalysisPage: React.FC = () => {
 
     scopedQuestions.forEach((q) => {
       const secName = sectionMap[q.section_id] || q.section_name || 'General';
-      const inferred = inferQuestionTopic(q.question_text || q.text || '', secName, q.topic);
+      const inferred = inferQuestionTopic(q.question_text || q.text || '', secName, q.topic, q.subtopic);
       const topicName = inferred.topic;
-      const subtopicName = q.subtopic || inferred.subtopic || '';
+      const subtopicName = inferred.subtopic || '';
       const key = `${secName}:::${topicName}:::${subtopicName}`;
 
       if (!map.has(key)) {
@@ -539,6 +577,9 @@ export const TopicAnalysisPage: React.FC = () => {
                 setSelectedExamId(e.target.value);
                 setSelectedSection('all');
                 setSearchQuery('');
+                setTableSectionFilter('all');
+                setTableTopicSearch('');
+                setSelectedTopicForQuestions(null);
               }}
             >
               <option value="all">All Exams ({questions.length} Qs)</option>
@@ -660,27 +701,138 @@ export const TopicAnalysisPage: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* TOPIC-WISE ANALYSIS TABLE (CLICK ANY TOPIC NAME TO DISPLAY QUESTIONS)     */}
+      {/* TOPIC-WISE ANALYSIS TABLE (FILTER ALL TOPIC NAMES & CLICK TO VIEW QS)     */}
       {/* ========================================================================= */}
       <div className="content-card mb-6 border-2 border-indigo-200">
         <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-2">
           <div>
             <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
               <Layers size={16} className="text-indigo-600" />
-              <span>Topic-Wise Analysis Table ({topicTableRows.length} Topics • {scopedQuestions.length} Total Questions)</span>
+              <span>
+                Filter All Topic Names & Topic-Wise Table ({filteredTopicTableRows.length} of {topicTableRows.length} Topics • {scopedQuestions.length} Uploaded Questions)
+              </span>
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Click any <strong>Topic Name</strong> or <strong>View Questions</strong> button to display all related questions for that topic immediately below.
+              Filter topics by section or search, then click any <strong>Topic Name</strong> pill or row to display all uploaded questions for that topic immediately below.
             </p>
           </div>
-          {selectedTopicForQuestions && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div style={{ position: 'relative', minWidth: '210px' }}>
+              <input
+                type="text"
+                className="form-input text-xs"
+                style={{ paddingLeft: '10px', paddingRight: '26px', height: '34px' }}
+                placeholder="Search topic name..."
+                value={tableTopicSearch}
+                onChange={(e) => setTableTopicSearch(e.target.value)}
+              />
+              {tableTopicSearch && (
+                <button
+                  type="button"
+                  onClick={() => setTableTopicSearch('')}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#64748b',
+                  }}
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+            {selectedTopicForQuestions && (
+              <button
+                type="button"
+                onClick={() => setSelectedTopicForQuestions(null)}
+                className="btn btn-secondary btn-sm text-xs"
+              >
+                Close Questions ({selectedTopicForQuestions.topic})
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION FILTER PILLS (ALL SECTIONS | SECTION 1..4) */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50">
+          <div className="text-[11px] font-bold text-slate-600 uppercase mb-2">
+            Step 1 — Filter by Section ({tableSectionTabs.length} Sections):
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
             <button
               type="button"
-              onClick={() => setSelectedTopicForQuestions(null)}
-              className="btn btn-secondary btn-sm text-xs"
+              onClick={() => setTableSectionFilter('all')}
+              className={`btn btn-sm text-xs ${
+                tableSectionFilter === 'all' ? 'btn-indigo' : 'btn-secondary'
+              }`}
             >
-              Close Related Questions ({selectedTopicForQuestions.topic})
+              All Sections ({topicTableRows.length} Topics • {scopedQuestions.length} Qs)
             </button>
+            {tableSectionTabs.map((sec) => {
+              const active = tableSectionFilter.toLowerCase() === sec.sectionName.toLowerCase();
+              return (
+                <button
+                  key={sec.sectionName}
+                  type="button"
+                  onClick={() => setTableSectionFilter(active ? 'all' : sec.sectionName)}
+                  className={`btn btn-sm text-xs ${active ? 'btn-indigo' : 'btn-secondary'}`}
+                >
+                  {sec.sectionName} ({sec.topicCount} Topics • {sec.questionCount} Qs)
+                </button>
+              );
+            })}
+          </div>
+
+          {/* FILTERED TOPIC NAMES STRIP (CLICK ANY TOPIC NAME TO DISPLAY ITS UPLOADED QUESTIONS) */}
+          <div className="text-[11px] font-bold text-slate-600 uppercase mb-2">
+            Step 2 — Click Any Topic Name ({filteredTopicTableRows.length} Topics) to Display Uploaded Questions:
+          </div>
+          {filteredTopicTableRows.length === 0 ? (
+            <div className="text-xs text-slate-400 py-2">
+              No topic names match your filter.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+              {filteredTopicTableRows.map((row, idx) => {
+                const isSelected =
+                  selectedTopicForQuestions?.topic.toLowerCase() === row.topic.toLowerCase() &&
+                  (selectedTopicForQuestions?.sectionName || '') === row.sectionName;
+                return (
+                  <button
+                    key={`pill-${row.sectionName}-${row.topic}-${idx}`}
+                    type="button"
+                    onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
+                    className={`btn btn-sm text-xs ${isSelected ? 'btn-teal' : 'btn-secondary'}`}
+                    style={{
+                      borderRadius: '9999px',
+                      padding: '4px 10px',
+                      fontSize: '11.5px',
+                      borderColor: isSelected ? '#0f766e' : '#cbd5e1',
+                    }}
+                    title={`Click to display ${row.count} uploaded question(s) in "${row.topic}" (${row.sectionName})`}
+                  >
+                    <span>{row.topic}</span>
+                    <span
+                      style={{
+                        marginLeft: '5px',
+                        padding: '1px 6px',
+                        borderRadius: '9999px',
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        backgroundColor: isSelected ? 'rgba(255,255,255,0.25)' : '#e0e7ff',
+                        color: isSelected ? '#ffffff' : '#3730a3',
+                      }}
+                    >
+                      {row.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
 
@@ -699,90 +851,98 @@ export const TopicAnalysisPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {topicTableRows.map((row, idx) => {
-                const isSelected =
-                  selectedTopicForQuestions?.topic.toLowerCase() === row.topic.toLowerCase() &&
-                  (selectedTopicForQuestions?.sectionName || '') === row.sectionName;
+              {filteredTopicTableRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="text-center text-xs text-slate-400 py-8">
+                    No topics found matching your filter.
+                  </td>
+                </tr>
+              ) : (
+                filteredTopicTableRows.map((row, idx) => {
+                  const isSelected =
+                    selectedTopicForQuestions?.topic.toLowerCase() === row.topic.toLowerCase() &&
+                    (selectedTopicForQuestions?.sectionName || '') === row.sectionName;
 
-                return (
-                  <tr
-                    key={`${row.sectionName}-${row.topic}-${idx}`}
-                    style={isSelected ? { backgroundColor: '#f0fdfa' } : undefined}
-                  >
-                    <td className="text-xs font-bold text-slate-400">{idx + 1}</td>
-                    <td>
-                      <button
-                        type="button"
-                        onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
-                        className="text-left cursor-pointer"
-                        style={{ background: 'none', border: 'none', padding: 0 }}
-                        title={`Click to display all ${row.count} related question(s) on ${row.topic}`}
-                      >
-                        <div className="font-bold text-sm text-teal-700 flex items-center gap-1" style={{ textDecoration: 'underline' }}>
-                          <span>{row.topic}</span>
-                          {isSelected && (
-                            <span className="text-[10px] bg-teal-600 text-white px-1.5 py-0.5 rounded font-bold" style={{ textDecoration: 'none' }}>
-                              OPEN
-                            </span>
+                  return (
+                    <tr
+                      key={`${row.sectionName}-${row.topic}-${idx}`}
+                      style={isSelected ? { backgroundColor: '#f0fdfa' } : undefined}
+                    >
+                      <td className="text-xs font-bold text-slate-400">{idx + 1}</td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
+                          className="text-left cursor-pointer"
+                          style={{ background: 'none', border: 'none', padding: 0 }}
+                          title={`Click to display all ${row.count} related question(s) on ${row.topic}`}
+                        >
+                          <div className="font-bold text-sm text-teal-700 flex items-center gap-1" style={{ textDecoration: 'underline' }}>
+                            <span>{row.topic}</span>
+                            {isSelected && (
+                              <span className="text-[10px] bg-teal-600 text-white px-1.5 py-0.5 rounded font-bold" style={{ textDecoration: 'none' }}>
+                                OPEN
+                              </span>
+                            )}
+                          </div>
+                          {row.subtopic && (
+                            <div className="text-[11px] text-slate-500">{row.subtopic}</div>
                           )}
+                        </button>
+                      </td>
+                      <td>
+                        <span className="text-xs font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                          {row.sectionName}
+                        </span>
+                      </td>
+                      <td className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
+                          className="font-black text-xs bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full cursor-pointer border border-indigo-200"
+                          title={`View ${row.count} questions`}
+                        >
+                          {row.count} Qs
+                        </button>
+                      </td>
+                      <td className="text-center text-xs font-bold text-slate-700">
+                        {row.sharePct}%
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold flex-wrap">
+                          <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">
+                            E: {row.easy}
+                          </span>
+                          <span className="bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">
+                            M: {row.medium}
+                          </span>
+                          <span className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
+                            H: {row.hard}
+                          </span>
                         </div>
-                        {row.subtopic && (
-                          <div className="text-[11px] text-slate-500">{row.subtopic}</div>
-                        )}
-                      </button>
-                    </td>
-                    <td>
-                      <span className="text-xs font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
-                        {row.sectionName}
-                      </span>
-                    </td>
-                    <td className="text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
-                        className="font-black text-xs bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full cursor-pointer border border-indigo-200"
-                        title={`View ${row.count} questions`}
-                      >
-                        {row.count} Qs
-                      </button>
-                    </td>
-                    <td className="text-center text-xs font-bold text-slate-700">
-                      {row.sharePct}%
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold flex-wrap">
-                        <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">
-                          E: {row.easy}
-                        </span>
-                        <span className="bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">
-                          M: {row.medium}
-                        </span>
-                        <span className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
-                          H: {row.hard}
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="text-[11px] text-slate-500 font-mono">
-                        {row.questionNumbers.slice(0, 8).map((n) => `Q${n}`).join(', ')}
-                        {row.questionNumbers.length > 8 ? ` +${row.questionNumbers.length - 8} more` : ''}
-                      </div>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
-                        className={`btn btn-sm text-xs flex items-center gap-1 ${
-                          isSelected ? 'btn-teal' : 'btn-indigo'
-                        }`}
-                      >
-                        <span>{isSelected ? 'Viewing' : 'View Questions'}</span>
-                        <ChevronRight size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                      <td>
+                        <div className="text-[11px] text-slate-500 font-mono">
+                          {row.questionNumbers.slice(0, 8).map((n) => `Q${n}`).join(', ')}
+                          {row.questionNumbers.length > 8 ? ` +${row.questionNumbers.length - 8} more` : ''}
+                        </div>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
+                          className={`btn btn-sm text-xs flex items-center gap-1 ${
+                            isSelected ? 'btn-teal' : 'btn-indigo'
+                          }`}
+                        >
+                          <span>{isSelected ? 'Viewing' : 'View Questions'}</span>
+                          <ChevronRight size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

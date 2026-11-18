@@ -51,6 +51,8 @@ export const QuestionsPage: React.FC = () => {
   const [sections, setSections] = useState<ExamSection[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string>('');
   const [selectedTopicFilter, setSelectedTopicFilter] = useState<string>('');
+  const [analysisSectionFilter, setAnalysisSectionFilter] = useState<string>('all');
+  const [analysisTopicSearch, setAnalysisTopicSearch] = useState<string>('');
   const [topicViewMode, setTopicViewMode] = useState<'table' | 'cards'>('table');
   const questionsListRef = useRef<HTMLDivElement | null>(null);
   const [questions, setQuestions] = useState<any[]>([]);
@@ -209,6 +211,8 @@ export const QuestionsPage: React.FC = () => {
     setSelectedExamId(exId);
     setSelectedSectionId('');
     setSelectedTopicFilter('');
+    setAnalysisSectionFilter('all');
+    setAnalysisTopicSearch('');
     setAllocationFeedback(null);
     setSearchParams(exId ? { exam_id: exId } : {});
     loadData(exId);
@@ -436,6 +440,23 @@ export const QuestionsPage: React.FC = () => {
     return rows.sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
   }, [sectionTopicAnalysis, allExamQuestions.length]);
 
+  const filteredTopicsTableRows = useMemo(() => {
+    return allTopicsTableRows.filter((row) => {
+      if (analysisSectionFilter !== 'all' && row.section_id !== analysisSectionFilter) {
+        return false;
+      }
+      if (analysisTopicSearch.trim()) {
+        const q = analysisTopicSearch.trim().toLowerCase();
+        return (
+          row.topic.toLowerCase().includes(q) ||
+          row.subtopic.toLowerCase().includes(q) ||
+          row.section_name.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [allTopicsTableRows, analysisSectionFilter, analysisTopicSearch]);
+
   const handleClickTopicFromAnalysis = (sectionId: string, topicName: string) => {
     const isSame =
       selectedSectionId === sectionId &&
@@ -459,7 +480,7 @@ export const QuestionsPage: React.FC = () => {
     if (!selectedTopicFilter) return questions;
     return questions.filter((q) => {
       const secName = sections.find((s) => s.id === q.section_id)?.name || '';
-      const resolved = inferQuestionTopic(q.question_text || '', secName, q.topic);
+      const resolved = inferQuestionTopic(q.question_text || '', secName, q.topic, q.subtopic);
       return resolved.topic.toLowerCase() === selectedTopicFilter.toLowerCase();
     });
   }, [questions, selectedTopicFilter, sections]);
@@ -1037,7 +1058,7 @@ export const QuestionsPage: React.FC = () => {
                 onClick={() => setTopicViewMode('table')}
                 className={`btn btn-sm text-xs ${topicViewMode === 'table' ? 'btn-teal' : 'btn-secondary'}`}
               >
-                Topic-Wise Table ({allTopicsTableRows.length})
+                Topic-Wise Table ({filteredTopicsTableRows.length})
               </button>
               <button
                 type="button"
@@ -1063,6 +1084,117 @@ export const QuestionsPage: React.FC = () => {
             </div>
           </div>
 
+          {/* SECTION FILTER PILLS + FILTERED TOPIC NAMES BAR */}
+          <div className="p-3.5 mb-4 rounded-xl border border-slate-200 bg-slate-50">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2.5">
+              <div className="text-[11px] font-bold text-slate-600 uppercase">
+                1. Filter Topic Names by Section ({sectionTopicAnalysis.length} Sections):
+              </div>
+              <div style={{ position: 'relative', minWidth: '200px' }}>
+                <input
+                  type="text"
+                  className="form-input text-xs"
+                  style={{ height: '32px', paddingRight: '26px' }}
+                  placeholder="Search topic name..."
+                  value={analysisTopicSearch}
+                  onChange={(e) => setAnalysisTopicSearch(e.target.value)}
+                />
+                {analysisTopicSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setAnalysisTopicSearch('')}
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#64748b',
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setAnalysisSectionFilter('all')}
+                className={`btn btn-sm text-xs ${
+                  analysisSectionFilter === 'all' ? 'btn-indigo' : 'btn-secondary'
+                }`}
+              >
+                All Sections ({allTopicsTableRows.length} Topics • {allExamQuestions.length} Qs)
+              </button>
+              {sectionTopicAnalysis.map((secGroup) => {
+                const isSecActive = analysisSectionFilter === secGroup.section_id;
+                return (
+                  <button
+                    key={`sec-pill-${secGroup.section_id}`}
+                    type="button"
+                    onClick={() =>
+                      setAnalysisSectionFilter(isSecActive ? 'all' : secGroup.section_id)
+                    }
+                    className={`btn btn-sm text-xs ${isSecActive ? 'btn-indigo' : 'btn-secondary'}`}
+                  >
+                    {secGroup.section_name} ({secGroup.unique_topic_count} Topics • {secGroup.uploaded_count} Qs)
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="text-[11px] font-bold text-slate-600 uppercase mb-2">
+              2. Click Any Topic Name ({filteredTopicsTableRows.length} Topics) to Display Its Uploaded Questions Below:
+            </div>
+            {filteredTopicsTableRows.length === 0 ? (
+              <div className="text-xs text-slate-400 py-1.5">
+                No topics match this filter.
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5" style={{ maxHeight: '135px', overflowY: 'auto' }}>
+                {filteredTopicsTableRows.map((row) => {
+                  const isActive =
+                    selectedSectionId === row.section_id &&
+                    selectedTopicFilter.toLowerCase() === row.topic.toLowerCase();
+                  return (
+                    <button
+                      key={`topic-pill-${row.section_id}-${row.topic}`}
+                      type="button"
+                      onClick={() => handleClickTopicFromAnalysis(row.section_id, row.topic)}
+                      className={`btn btn-sm text-xs ${isActive ? 'btn-teal' : 'btn-secondary'}`}
+                      style={{
+                        borderRadius: '9999px',
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        borderColor: isActive ? '#0f766e' : '#cbd5e1',
+                      }}
+                      title={`Click to view ${row.count} uploaded question(s) for "${row.topic}" (${row.section_name})`}
+                    >
+                      <span>{row.topic}</span>
+                      <span
+                        style={{
+                          marginLeft: '5px',
+                          padding: '1px 6px',
+                          borderRadius: '9999px',
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : '#e0e7ff',
+                          color: isActive ? '#ffffff' : '#3730a3',
+                        }}
+                      >
+                        {row.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {topicViewMode === 'table' ? (
             <div className="table-responsive" style={{ maxHeight: '340px', overflowY: 'auto' }}>
               <table className="data-table">
@@ -1078,14 +1210,14 @@ export const QuestionsPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {allTopicsTableRows.length === 0 ? (
+                  {filteredTopicsTableRows.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="text-center text-xs text-slate-400 py-6">
-                        No questions uploaded yet for this exam.
+                        No topics match the selected section/search filter.
                       </td>
                     </tr>
                   ) : (
-                    allTopicsTableRows.map((row, idx) => {
+                    filteredTopicsTableRows.map((row, idx) => {
                       const isRowActive =
                         selectedSectionId === row.section_id &&
                         selectedTopicFilter.toLowerCase() === row.topic.toLowerCase();
@@ -1556,7 +1688,7 @@ export const QuestionsPage: React.FC = () => {
                   const hasImage = Boolean(q.image_url);
                   const hasOptionImages = q.options?.some((o: any) => Boolean(o.image_url));
                   const secName = sections.find((s) => s.id === q.section_id)?.name || '';
-                  const resolvedTopic = inferQuestionTopic(q.question_text || '', secName, q.topic);
+                  const resolvedTopic = inferQuestionTopic(q.question_text || '', secName, q.topic, q.subtopic);
 
                   return (
                     <tr key={q.id}>

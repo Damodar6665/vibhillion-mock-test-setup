@@ -336,7 +336,8 @@ export function distributeQuestionsAcrossSections(params: {
       const resolvedTopic = inferQuestionTopic(
         q.question_text || q.text || '',
         sec.name,
-        q.topic
+        q.topic,
+        q.subtopic
       );
       finalAssigned.push({
         ...q,
@@ -344,7 +345,7 @@ export function distributeQuestionsAcrossSections(params: {
         section_id: sec.id,
         section_name: sec.name,
         topic: resolvedTopic.topic,
-        subtopic: q.subtopic || resolvedTopic.subtopic,
+        subtopic: resolvedTopic.subtopic || q.subtopic || '',
         marks: q.marks !== undefined ? Number(q.marks) : sec.marks_per_correct,
         negative_marks: q.negative_marks !== undefined ? Number(q.negative_marks) : sec.negative_marks_per_wrong,
         question_number: runningQuestionNumber++,
@@ -432,17 +433,40 @@ const TOPIC_RULES: Array<{ sectionHint?: RegExp; pattern: RegExp; topic: string;
 export function inferQuestionTopic(
   questionText: string,
   sectionName: string,
-  existingTopic?: string
+  existingTopic?: string,
+  existingSubtopic?: string
 ): { topic: string; subtopic: string } {
   const cleanExisting = (existingTopic || '').trim();
+  const cleanSub = (existingSubtopic || '').trim();
+  const secLower = (sectionName || '').toLowerCase().trim();
+  const topicLower = cleanExisting.toLowerCase();
+
   const isGeneric =
     !cleanExisting ||
-    cleanExisting.toLowerCase() === 'general' ||
-    cleanExisting.toLowerCase() === 'general topic' ||
-    cleanExisting.toLowerCase() === 'untitled';
+    topicLower === 'general' ||
+    topicLower === 'general topic' ||
+    topicLower === 'untitled';
 
-  if (!isGeneric) {
-    return { topic: cleanExisting, subtopic: '' };
+  // Detect when uploaded "topic" merely repeats the broad section name (e.g. "Reasoning", "Quantitative Aptitude", "General Awareness", "English")
+  const isBroadSectionName =
+    Boolean(cleanExisting) &&
+    (topicLower === secLower ||
+      (secLower.length > 3 && (secLower.includes(topicLower) || topicLower.includes(secLower))) ||
+      ['reasoning', 'quantitative aptitude', 'general awareness', 'english', 'arithmetic', 'math', 'maths'].includes(
+        topicLower
+      ));
+
+  const isSubSpecific =
+    Boolean(cleanSub) &&
+    !['general', 'concept', 'concept application', 'core concept', 'untitled'].includes(cleanSub.toLowerCase());
+
+  if (!isGeneric && !isBroadSectionName) {
+    return { topic: cleanExisting, subtopic: cleanSub };
+  }
+
+  // If topic is just the broad section name, promote specific subtopic (e.g., "Blood Relations", "Trigonometry", "Polity")
+  if (isBroadSectionName && isSubSpecific) {
+    return { topic: cleanSub, subtopic: cleanExisting };
   }
 
   const text = String(questionText || '');
@@ -460,6 +484,10 @@ export function inferQuestionTopic(
     if (rule.pattern.test(text)) {
       return { topic: rule.topic, subtopic: rule.subtopic };
     }
+  }
+
+  if (!isGeneric) {
+    return { topic: cleanExisting, subtopic: cleanSub };
   }
 
   return {
@@ -506,9 +534,9 @@ export function buildSectionTopicAnalysis(
     let hard = 0;
 
     secQs.forEach((q) => {
-      const inferred = inferQuestionTopic(q.question_text || q.text || '', sec.name, q.topic);
+      const inferred = inferQuestionTopic(q.question_text || q.text || '', sec.name, q.topic, q.subtopic);
       const topicName = inferred.topic;
-      const subtopicName = q.subtopic || inferred.subtopic || '';
+      const subtopicName = inferred.subtopic || '';
       const diff = String(q.difficulty || 'medium').toLowerCase();
 
       if (diff === 'easy') easy++;
