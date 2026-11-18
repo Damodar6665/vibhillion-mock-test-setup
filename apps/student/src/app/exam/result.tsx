@@ -895,13 +895,8 @@ export default function ExamResultScreen() {
               })}
             </View>
 
-            {/* HORIZONTAL TOPIC-WISE ANALYSIS CARDS CONTAINER */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={true}
-              style={{ marginBottom: 8 }}
-              contentContainerStyle={styles.topicHorizontalScroll}
-            >
+            {/* HORIZONTAL WRAPPING TOPIC-WISE ANALYSIS CARDS CONTAINER */}
+            <View style={styles.topicHorizontalWrapGrid}>
               {filteredTopicsSummary.map((t) => {
                 const isTopicSelected = selectedTopicFilter.toLowerCase() === t.topic.toLowerCase();
                 return (
@@ -1060,9 +1055,9 @@ export default function ExamResultScreen() {
                   </View>
                 );
               })}
-            </ScrollView>
+            </View>
             <Text style={styles.swipeHintText}>
-              Scroll horizontally to browse all {filteredTopicsSummary.length} topics • Tap any Topic Name or count pill to view its questions.
+              Tap any Topic Name or count pill to display and expand its uploaded questions below.
             </Text>
           </>
         )}
@@ -2335,14 +2330,19 @@ const styles = StyleSheet.create({
   paletteTextSkipped: {
     color: '#64748B',
   },
-  topicHorizontalScroll: {
+  topicHorizontalWrapGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
+    marginBottom: 8,
+    alignItems: 'stretch',
   },
   topicHorizontalCard: {
-    width: 316,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 310,
+    minWidth: 290,
+    maxWidth: 440,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
