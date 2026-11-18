@@ -895,112 +895,175 @@ export default function ExamResultScreen() {
               })}
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-              <View style={[styles.tableCard, { minWidth: 460 }]}>
-                <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.tableColHeader, { flex: 2.4 }]}>TOPIC NAME (CLICK TO VIEW)</Text>
-                  <Text style={[styles.tableColHeader, { width: 44, textAlign: 'center' }]}>QS</Text>
-                  <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#0D9488' }]}>ANSWERED</Text>
-                  <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#059669' }]}>CORRECT</Text>
-                  <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#DC2626' }]}>WRONG</Text>
-                  <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#4F46E5' }]}>SKIPPED</Text>
-                  <Text style={[styles.tableColHeader, { width: 44, textAlign: 'right' }]}>ACC</Text>
-                </View>
-                <View style={styles.tableDivider} />
-
-                {filteredTopicsSummary.map((t) => {
-                  const isTopicSelected = selectedTopicFilter.toLowerCase() === t.topic.toLowerCase();
-                  return (
-                    <React.Fragment key={`${t.sectionName}-${t.topic}`}>
-                      <View
-                        style={[
-                          styles.tableDataRow,
-                          isTopicSelected && { backgroundColor: '#F0FDFA', borderRadius: 6 },
-                        ]}
+            {/* HORIZONTAL TOPIC-WISE ANALYSIS CARDS CONTAINER */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={true}
+              style={{ marginBottom: 8 }}
+              contentContainerStyle={styles.topicHorizontalScroll}
+            >
+              {filteredTopicsSummary.map((t) => {
+                const isTopicSelected = selectedTopicFilter.toLowerCase() === t.topic.toLowerCase();
+                return (
+                  <View
+                    key={`${t.sectionName}-${t.topic}`}
+                    style={[
+                      styles.topicHorizontalCard,
+                      isTopicSelected && styles.topicHorizontalCardActive,
+                    ]}
+                  >
+                    {/* Card Header: Clickable Topic Name + Section Name + Accuracy Badge */}
+                    <View style={styles.topicCardTopRow}>
+                      <TouchableOpacity
+                        style={{ flex: 1, paddingRight: 8 }}
+                        onPress={() => handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'all')}
                       >
-                        {/* Clickable Topic Name */}
-                        <TouchableOpacity
-                          style={{ flex: 2.4, paddingRight: 6 }}
-                          onPress={() => handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'all')}
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            fontSize: 13.5,
+                            fontWeight: '800',
+                            color: isTopicSelected ? '#0D9488' : '#0F766E',
+                            textDecorationLine: 'underline',
+                          }}
                         >
-                          <Text
-                            style={[
-                              styles.tableDataText,
-                              {
-                                fontWeight: '700',
-                                color: isTopicSelected ? '#0D9488' : '#0F766E',
-                                textDecorationLine: 'underline',
-                              },
-                            ]}
-                          >
-                            {t.topic}
-                          </Text>
-                          <Text style={{ fontSize: 10, color: '#64748B', marginTop: 1 }}>
-                            {t.sectionName}
-                          </Text>
-                        </TouchableOpacity>
+                          {t.topic}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}
+                        >
+                          {t.sectionName}
+                        </Text>
+                      </TouchableOpacity>
 
-                        {/* Total Qs Pill */}
+                      <View style={styles.topicCardAccBadge}>
+                        <Text style={styles.topicCardAccLabel}>ACC</Text>
+                        <Text style={styles.topicCardAccValue}>{t.acc}</Text>
+                      </View>
+                    </View>
+
+                    <View style={[styles.tableDivider, { marginVertical: 8 }]} />
+
+                    {/* Horizontal 5-Column Stats Strip (No Label Wrapping) */}
+                    <View style={styles.topicCardMetricsRow}>
+                      {/* QS */}
+                      <View style={styles.topicCardMetricCol}>
+                        <Text style={styles.topicCardMetricLabel} numberOfLines={1}>
+                          QS
+                        </Text>
                         <TouchableOpacity
-                          style={[styles.subjectNumberPill, { borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', width: 40 }]}
+                          style={[
+                            styles.topicCardMetricPill,
+                            { borderColor: '#C7D2FE', backgroundColor: '#EEF2FF' },
+                          ]}
                           onPress={() => handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'all')}
                         >
-                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#3730A3' }]}>
+                          <Text style={[styles.topicCardMetricNum, { color: '#3730A3' }]}>
                             {t.qs}
                           </Text>
                         </TouchableOpacity>
+                      </View>
 
-                        {/* Answered Pill */}
-                        <TouchableOpacity
-                          style={[styles.subjectNumberPill, { borderColor: '#99F6E4', backgroundColor: '#F0FDFA', width: 46 }]}
-                          onPress={() => handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'answered')}
+                      {/* ANSWERED */}
+                      <View style={styles.topicCardMetricCol}>
+                        <Text
+                          style={[styles.topicCardMetricLabel, { color: '#0D9488' }]}
+                          numberOfLines={1}
                         >
-                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#0D9488' }]}>
+                          ANSWERED
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.topicCardMetricPill,
+                            { borderColor: '#99F6E4', backgroundColor: '#F0FDFA' },
+                          ]}
+                          onPress={() =>
+                            handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'answered')
+                          }
+                        >
+                          <Text style={[styles.topicCardMetricNum, { color: '#0D9488' }]}>
                             {t.answered}
                           </Text>
                         </TouchableOpacity>
+                      </View>
 
-                        {/* Correct Pill */}
-                        <TouchableOpacity
-                          style={[styles.subjectNumberPill, { borderColor: '#A7F3D0', backgroundColor: '#ECFDF5', width: 46 }]}
-                          onPress={() => handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'correct')}
+                      {/* CORRECT */}
+                      <View style={styles.topicCardMetricCol}>
+                        <Text
+                          style={[styles.topicCardMetricLabel, { color: '#059669' }]}
+                          numberOfLines={1}
                         >
-                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#059669' }]}>
+                          CORRECT
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.topicCardMetricPill,
+                            { borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' },
+                          ]}
+                          onPress={() =>
+                            handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'correct')
+                          }
+                        >
+                          <Text style={[styles.topicCardMetricNum, { color: '#059669' }]}>
                             {t.correct}
                           </Text>
                         </TouchableOpacity>
+                      </View>
 
-                        {/* Wrong Pill */}
-                        <TouchableOpacity
-                          style={[styles.subjectNumberPill, { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2', width: 46 }]}
-                          onPress={() => handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'wrong')}
+                      {/* WRONG */}
+                      <View style={styles.topicCardMetricCol}>
+                        <Text
+                          style={[styles.topicCardMetricLabel, { color: '#DC2626' }]}
+                          numberOfLines={1}
                         >
-                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#DC2626' }]}>
+                          WRONG
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.topicCardMetricPill,
+                            { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' },
+                          ]}
+                          onPress={() =>
+                            handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'wrong')
+                          }
+                        >
+                          <Text style={[styles.topicCardMetricNum, { color: '#DC2626' }]}>
                             {t.wrong}
                           </Text>
                         </TouchableOpacity>
+                      </View>
 
-                        {/* Skipped Pill */}
-                        <TouchableOpacity
-                          style={[styles.subjectNumberPill, { borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', width: 46 }]}
-                          onPress={() => handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'unattempted')}
+                      {/* SKIPPED */}
+                      <View style={styles.topicCardMetricCol}>
+                        <Text
+                          style={[styles.topicCardMetricLabel, { color: '#4F46E5' }]}
+                          numberOfLines={1}
                         >
-                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#4F46E5' }]}>
+                          SKIPPED
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.topicCardMetricPill,
+                            { borderColor: '#C7D2FE', backgroundColor: '#EEF2FF' },
+                          ]}
+                          onPress={() =>
+                            handleSelectTopicToViewQuestions(t.topic, t.sectionName, 'unattempted')
+                          }
+                        >
+                          <Text style={[styles.topicCardMetricNum, { color: '#4F46E5' }]}>
                             {t.skipped}
                           </Text>
                         </TouchableOpacity>
-
-                        {/* Accuracy */}
-                        <Text style={[styles.tableDataText, { width: 44, textAlign: 'right', fontWeight: '700' }]}>
-                          {t.acc}
-                        </Text>
                       </View>
-                      <View style={styles.tableDivider} />
-                    </React.Fragment>
-                  );
-                })}
-              </View>
+                    </View>
+                  </View>
+                );
+              })}
             </ScrollView>
+            <Text style={styles.swipeHintText}>
+              Scroll horizontally to browse all {filteredTopicsSummary.length} topics • Tap any Topic Name or count pill to view its questions.
+            </Text>
           </>
         )}
 
@@ -2271,5 +2334,84 @@ const styles = StyleSheet.create({
   },
   paletteTextSkipped: {
     color: '#64748B',
+  },
+  topicHorizontalScroll: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  topicHorizontalCard: {
+    width: 316,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  topicHorizontalCardActive: {
+    backgroundColor: '#F0FDFA',
+    borderColor: '#0D9488',
+    borderWidth: 1.5,
+  },
+  topicCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  topicCardAccBadge: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignItems: 'center',
+    minWidth: 50,
+  },
+  topicCardAccLabel: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.4,
+  },
+  topicCardAccValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  topicCardMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
+  topicCardMetricCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  topicCardMetricLabel: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#475569',
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  topicCardMetricPill: {
+    width: '100%',
+    paddingVertical: 5,
+    borderRadius: 7,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topicCardMetricNum: {
+    fontSize: 12.5,
+    fontWeight: '800',
   },
 });
