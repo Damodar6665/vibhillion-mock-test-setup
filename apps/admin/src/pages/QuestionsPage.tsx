@@ -52,10 +52,13 @@ export const QuestionsPage: React.FC = () => {
 
   // Exam & Section Question Allocation Config States
   const [examTotalLimit, setExamTotalLimit] = useState<number>(100);
+  const [examTotalText, setExamTotalText] = useState<string>('100');
   const [sectionCountInput, setSectionCountInput] = useState<number>(4);
+  const [sectionCountText, setSectionCountText] = useState<string>('4');
   const [sectionAllocations, setSectionAllocations] = useState<SectionAllocationConfig[]>([]);
   const [savingAllocation, setSavingAllocation] = useState<boolean>(false);
   const [allocationFeedback, setAllocationFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [bulkActionError, setBulkActionError] = useState<string | null>(null);
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -80,6 +83,7 @@ export const QuestionsPage: React.FC = () => {
 
   // Bulk JSON State
   const [jsonContent, setJsonContent] = useState('');
+  const [jsonFileName, setJsonFileName] = useState('');
   const [jsonReplace, setJsonReplace] = useState(false);
   const [distributionMode, setDistributionMode] = useState<DistributionMode>('content_and_count');
   const [isUploadingJson, setIsUploadingJson] = useState(false);
@@ -87,9 +91,11 @@ export const QuestionsPage: React.FC = () => {
   const syncAllocationStateFromData = (examObj: Exam | undefined, examSections: ExamSection[]) => {
     const targetLimit = Math.max(1, Number(examObj?.total_questions) || 100);
     setExamTotalLimit(targetLimit);
+    setExamTotalText(String(targetLimit));
 
     if (examSections.length > 0) {
       setSectionCountInput(examSections.length);
+      setSectionCountText(String(examSections.length));
       setSectionAllocations(
         examSections.map((s, idx) => ({
           id: s.id,
@@ -105,6 +111,7 @@ export const QuestionsPage: React.FC = () => {
       const defaultCounts = divideTotalAcrossSections(targetLimit, 4);
       const defaultNames = getDefaultSectionNames(4);
       setSectionCountInput(4);
+      setSectionCountText('4');
       setSectionAllocations(
         defaultCounts.map((cnt, idx) => ({
           id: `sec-new-${idx + 1}`,
@@ -117,6 +124,15 @@ export const QuestionsPage: React.FC = () => {
         }))
       );
     }
+  };
+
+  const openBulkUploadModal = () => {
+    setBulkActionError(null);
+    // If exam is already full with existing questions, default Replace mode ON so upload works immediately
+    if (allExamQuestions.length >= examTotalLimit && allExamQuestions.length > 0) {
+      setJsonReplace(true);
+    }
+    setIsJsonModalOpen(true);
   };
 
   const loadData = async (targetExamId?: string) => {
@@ -176,10 +192,10 @@ export const QuestionsPage: React.FC = () => {
   }, [examIdParam]);
 
   useEffect(() => {
-    if (openBulkParam) {
-      setIsJsonModalOpen(true);
+    if (openBulkParam && !loading) {
+      openBulkUploadModal();
     }
-  }, [openBulkParam]);
+  }, [openBulkParam, loading]);
 
   const handleSelectExam = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const exId = e.target.value;
@@ -197,27 +213,54 @@ export const QuestionsPage: React.FC = () => {
     setQuestions(secQs);
   };
 
-  // Auto-divide examTotalLimit across sectionCountInput
-  const handleAutoDivideSections = (targetTotal = examTotalLimit, targetSecCount = sectionCountInput) => {
-    const safeSecCount = Math.max(1, Math.min(20, Math.floor(Number(targetSecCount) || 1)));
-    const safeTotal = Math.max(1, Math.floor(Number(targetTotal) || 1));
+  // Auto-divide examTotalLimit across sectionCountInput (works smoothly from both main panel and modal)
+  const handleAutoDivideSections = (
+    targetTotal?: number,
+    targetSecCount?: number,
+    showFeedback = true
+  ): SectionAllocationConfig[] => {
+    const parsedTotal = targetTotal !== undefined ? targetTotal : (parseInt(examTotalText, 10) || examTotalLimit || 100);
+    const parsedSecCount = targetSecCount !== undefined ? targetSecCount : (parseInt(sectionCountText, 10) || sectionCountInput || 1);
+    const safeSecCount = Math.max(1, Math.min(20, Math.floor(Number(parsedSecCount) || 1)));
+    const safeTotal = Math.max(1, Math.floor(Number(parsedTotal) || 1));
     const counts = divideTotalAcrossSections(safeTotal, safeSecCount);
     const defaultNames = getDefaultSectionNames(safeSecCount);
     const currentExamObj = exams.find((e) => e.id === selectedExamId);
     const perSecDur = Math.max(60, Math.round((Number(currentExamObj?.total_duration_seconds) || 3600) / safeSecCount));
 
+    const nextAllocations: SectionAllocationConfig[] = counts.map((cnt, idx) => ({
+      id: sectionAllocations[idx]?.id || `sec-new-${idx + 1}`,
+      name: sectionAllocations[idx]?.name || defaultNames[idx],
+      display_order: idx + 1,
+      question_count: cnt,
+      duration_seconds: sectionAllocations[idx]?.duration_seconds || perSecDur,
+      marks_per_correct: sectionAllocations[idx]?.marks_per_correct || Number(currentExamObj?.positive_marks) || 2.0,
+      negative_marks_per_wrong: sectionAllocations[idx]?.negative_marks_per_wrong || Number(currentExamObj?.negative_marks) || 0.5,
+    }));
+
+    setExamTotalLimit(safeTotal);
+    setExamTotalText(String(safeTotal));
     setSectionCountInput(safeSecCount);
-    setSectionAllocations((prev) =>
-      counts.map((cnt, idx) => ({
-        id: prev[idx]?.id || `sec-${selectedExamId}-${idx + 1}`,
-        name: prev[idx]?.name || defaultNames[idx],
-        display_order: idx + 1,
-        question_count: cnt,
-        duration_seconds: prev[idx]?.duration_seconds || perSecDur,
-        marks_per_correct: prev[idx]?.marks_per_correct || Number(currentExamObj?.positive_marks) || 2.0,
-        negative_marks_per_wrong: prev[idx]?.negative_marks_per_wrong || Number(currentExamObj?.negative_marks) || 0.5,
-      }))
-    );
+    setSectionCountText(String(safeSecCount));
+    setSectionAllocations(nextAllocations);
+    setBulkActionError(null);
+
+    if (showFeedback) {
+      const summary = nextAllocations.map((s) => `${s.name}: ${s.question_count}`).join(' • ');
+      setAllocationFeedback({
+        type: 'success',
+        text: `Divided ${safeTotal} questions across ${safeSecCount} section(s) → ${summary}`,
+      });
+    }
+
+    return nextAllocations;
+  };
+
+  // Divide AND immediately save to backend so changes persist right away
+  const handleDivideAndSave = async () => {
+    const divided = handleAutoDivideSections(undefined, undefined, false);
+    const parsedTotal = Math.max(1, Math.floor(parseInt(examTotalText, 10) || examTotalLimit || 1));
+    await handleSaveExamAndSectionCounts(false, parsedTotal, divided);
   };
 
   const handleAllocationFieldChange = (
@@ -242,18 +285,26 @@ export const QuestionsPage: React.FC = () => {
     [sectionAllocations]
   );
 
-  const handleSaveExamAndSectionCounts = async (silent = false): Promise<ExamSection[] | null> => {
+  const handleSaveExamAndSectionCounts = async (
+    silent = false,
+    overrideTotal?: number,
+    overrideAllocations?: SectionAllocationConfig[]
+  ): Promise<ExamSection[] | null> => {
     if (!selectedExamId) return null;
-    if (examTotalLimit <= 0) {
+    const totalToSave = Math.max(1, Math.floor(overrideTotal !== undefined ? overrideTotal : (parseInt(examTotalText, 10) || examTotalLimit || 0)));
+    const allocsToSave = overrideAllocations || sectionAllocations;
+    const allocSum = allocsToSave.reduce((s, item) => s + (Number(item.question_count) || 0), 0);
+
+    if (totalToSave <= 0) {
       alert('Whole Exam Question Count must be greater than 0.');
       return null;
     }
-    if (allocatedSectionSum !== Number(examTotalLimit)) {
-      const msg = `Section-wise sum (${allocatedSectionSum}) must equal Whole Exam Question Count (${examTotalLimit}). Click "Auto-Divide" or adjust section counts.`;
+    if (allocSum !== totalToSave) {
+      const msg = `Section-wise sum (${allocSum}) must equal Whole Exam Question Count (${totalToSave}). Click "Divide Equally" or adjust section counts.`;
       if (!silent) {
         setAllocationFeedback({ type: 'error', text: msg });
       }
-      alert(msg);
+      setBulkActionError(msg);
       return null;
     }
 
@@ -261,8 +312,8 @@ export const QuestionsPage: React.FC = () => {
       setSavingAllocation(true);
       const syncRes = await adminService.syncExamSections(
         selectedExamId,
-        Number(examTotalLimit),
-        sectionAllocations.map((s, idx) => ({
+        totalToSave,
+        allocsToSave.map((s, idx) => ({
           id: s.id.startsWith('sec-new-') ? undefined : s.id,
           name: s.name.trim() || `Section ${idx + 1}`,
           display_order: idx + 1,
@@ -273,6 +324,8 @@ export const QuestionsPage: React.FC = () => {
         }))
       );
 
+      setExamTotalLimit(totalToSave);
+      setExamTotalText(String(totalToSave));
       setSections(syncRes.sections);
       setSectionAllocations(
         syncRes.sections.map((s, idx) => ({
@@ -295,9 +348,10 @@ export const QuestionsPage: React.FC = () => {
 
       setSavingAllocation(false);
       if (!silent) {
+        const breakdownStr = syncRes.sections.map((s) => `${s.name} (${s.question_count})`).join(', ');
         setAllocationFeedback({
           type: 'success',
-          text: `Saved! Exam limit set to ${examTotalLimit} questions across ${syncRes.sections.length} section(s).`,
+          text: `Saved & Divided! Exam limit: ${totalToSave} Qs → ${breakdownStr}`,
         });
       }
       return syncRes.sections;
@@ -345,6 +399,30 @@ export const QuestionsPage: React.FC = () => {
   const activeExamLimit = Math.max(1, Number(examTotalLimit) || Number(activeExam?.total_questions) || 100);
   const remainingExamSlots = Math.max(0, activeExamLimit - allExamQuestions.length);
 
+  // Helper to extract questions array from flexible JSON structures
+  const extractQuestionsArray = (parsed: any): any[] | null => {
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && Array.isArray(parsed.questions)) return parsed.questions;
+    if (parsed && Array.isArray(parsed.data)) return parsed.data;
+    if (parsed && Array.isArray(parsed.items)) return parsed.items;
+    if (parsed && Array.isArray(parsed.sections)) {
+      // Support section-grouped JSON: { sections: [{ name: "...", questions: [...] }] }
+      const flattened: any[] = [];
+      parsed.sections.forEach((sec: any) => {
+        if (Array.isArray(sec.questions)) {
+          sec.questions.forEach((q: any) => {
+            flattened.push({
+              ...q,
+              section_name: q.section_name || sec.name || sec.section_name,
+            });
+          });
+        }
+      });
+      return flattened;
+    }
+    return null;
+  };
+
   // Live Real-Time Bulk Upload Distribution & Limit Preview
   const bulkPreview = useMemo(() => {
     if (!jsonContent.trim()) {
@@ -352,9 +430,12 @@ export const QuestionsPage: React.FC = () => {
     }
     try {
       const parsed = JSON.parse(jsonContent);
-      const rawList = Array.isArray(parsed) ? parsed : (parsed.questions || []);
-      if (!Array.isArray(rawList)) {
-        return { parseError: 'JSON must be an array of questions or { "questions": [...] }.', result: null };
+      const rawList = extractQuestionsArray(parsed);
+      if (!rawList) {
+        return {
+          parseError: 'JSON must be an array of questions `[...]` or `{ "questions": [...] }` or `{ "sections": [...] }`.',
+          result: null,
+        };
       }
       if (rawList.length === 0) {
         return { parseError: 'JSON questions array is empty.', result: null };
@@ -546,23 +627,32 @@ export const QuestionsPage: React.FC = () => {
   const handleJsonFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setJsonFileName(file.name);
+      setBulkActionError(null);
       const reader = new FileReader();
       reader.onload = () => {
-        setJsonContent(reader.result as string);
+        setJsonContent(String(reader.result || ''));
       };
       reader.readAsText(file);
     }
   };
 
   const handleExecuteJsonBulkUpload = async () => {
+    setBulkActionError(null);
+
     if (!jsonContent.trim()) {
-      alert('Please select a JSON file or paste valid JSON content.');
+      setBulkActionError('Please choose a .json file or paste your questions JSON content in Step 2 before uploading.');
       return;
     }
 
-    if (allocatedSectionSum !== Number(examTotalLimit)) {
-      alert(
-        `Section-wise counts sum (${allocatedSectionSum}) must equal Whole Exam Question Count (${examTotalLimit}) before bulk upload. Click "Auto-Divide" or adjust counts.`
+    const parsedLimit = Math.max(1, Math.floor(parseInt(examTotalText, 10) || examTotalLimit || 100));
+    let allocationsToUse = sectionAllocations;
+
+    // If section sum does not match exam total, automatically divide cleanly if user forgot to click Auto-Divide
+    const currentSum = allocationsToUse.reduce((s, item) => s + (Number(item.question_count) || 0), 0);
+    if (currentSum !== parsedLimit) {
+      setBulkActionError(
+        `Section-wise counts sum (${currentSum}) does not match Whole Exam Question Limit (${parsedLimit}). Click "Auto-Divide" in Step 1 or adjust the section counts so they add up to ${parsedLimit}.`
       );
       return;
     }
@@ -570,16 +660,16 @@ export const QuestionsPage: React.FC = () => {
     try {
       setIsUploadingJson(true);
       const parsed = JSON.parse(jsonContent);
-      const questionsList = Array.isArray(parsed) ? parsed : (parsed.questions || []);
+      const questionsList = extractQuestionsArray(parsed);
 
-      if (!Array.isArray(questionsList) || questionsList.length === 0) {
-        alert('Invalid JSON: Must contain an array of questions or { "questions": [...] }.');
+      if (!questionsList || questionsList.length === 0) {
+        setBulkActionError('Invalid JSON: Must contain an array of questions `[...]` or `{ "questions": [...] }`.');
         setIsUploadingJson(false);
         return;
       }
 
       // 1. Sync configured Exam Question Limit & Section Counts first so section IDs are finalized
-      const syncedSections = await handleSaveExamAndSectionCounts(true);
+      const syncedSections = await handleSaveExamAndSectionCounts(true, parsedLimit, allocationsToUse);
       if (!syncedSections || syncedSections.length === 0) {
         setIsUploadingJson(false);
         return;
@@ -597,7 +687,7 @@ export const QuestionsPage: React.FC = () => {
           marks_per_correct: Number(s.marks_per_correct) || 2.0,
           negative_marks_per_wrong: Number(s.negative_marks_per_wrong) || 0.5,
         })),
-        examLimit: Number(examTotalLimit),
+        examLimit: parsedLimit,
         existingQuestions: allExamQuestions,
         replaceMode: jsonReplace,
         mode: distributionMode,
@@ -606,8 +696,8 @@ export const QuestionsPage: React.FC = () => {
 
       if (distribution.acceptedCount === 0) {
         setIsUploadingJson(false);
-        alert(
-          `Upload blocked: Exam has already reached its configured limit of ${examTotalLimit} questions (${distribution.existingExamCount}/${examTotalLimit}). Enable "Replace existing questions for this exam" or increase Whole Exam Question Count.`
+        setBulkActionError(
+          `Exam already has ${distribution.existingExamCount}/${parsedLimit} questions uploaded (0 slots remaining). Check "Replace existing questions for this exam" below or increase Whole Exam Question Limit.`
         );
         return;
       }
@@ -615,7 +705,7 @@ export const QuestionsPage: React.FC = () => {
       // 3. Persist the divided & capped questions to the backend
       const res = await adminService.bulkUploadQuestions({
         exam_id: selectedExamId,
-        exam_question_limit: Number(examTotalLimit),
+        exam_question_limit: parsedLimit,
         questions: distribution.assignedQuestions,
         replace: jsonReplace,
       });
@@ -623,6 +713,7 @@ export const QuestionsPage: React.FC = () => {
       setIsUploadingJson(false);
       setIsJsonModalOpen(false);
       setJsonContent('');
+      setJsonFileName('');
       await loadData(selectedExamId);
 
       const breakdownLines = distribution.sectionBreakdown
@@ -631,15 +722,20 @@ export const QuestionsPage: React.FC = () => {
 
       const excessNote =
         distribution.excludedExcessCount > 0
-          ? `\n\n⚠️ Limit Enforced: ${distribution.excludedExcessCount} excess question(s) in the file were excluded because this exam is capped at ${examTotalLimit} total questions.`
+          ? `\n\n⚠️ Limit Enforced: ${distribution.excludedExcessCount} excess question(s) in the file were excluded because this exam is capped at ${parsedLimit} total questions.`
           : '';
 
+      setAllocationFeedback({
+        type: 'success',
+        text: `Bulk Upload Complete! Imported ${res.uploaded_count} of ${distribution.inputCount} question(s) divided across ${distribution.sectionBreakdown.length} sections.${distribution.excludedExcessCount > 0 ? ` (${distribution.excludedExcessCount} excess excluded over ${parsedLimit} exam limit)` : ''}`,
+      });
+
       alert(
-        `Bulk Upload & Section Division Successful!\n\nUploaded: ${res.uploaded_count} of ${distribution.inputCount} file questions\nExam Limit: ${examTotalLimit} Questions\n\nSection-Wise Division:\n${breakdownLines}${excessNote}`
+        `Bulk Upload & Section Division Successful!\n\nUploaded: ${res.uploaded_count} of ${distribution.inputCount} file questions\nExam Limit: ${parsedLimit} Questions\n\nSection-Wise Division:\n${breakdownLines}${excessNote}`
       );
     } catch (err: any) {
       setIsUploadingJson(false);
-      alert(`JSON Upload Error: ${err.message}`);
+      setBulkActionError(`JSON Upload Error: ${err.message}`);
     }
   };
 
@@ -663,8 +759,8 @@ export const QuestionsPage: React.FC = () => {
           </button>
 
           <button
-            className="btn btn-secondary bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-            onClick={() => setIsJsonModalOpen(true)}
+            className="btn btn-indigo"
+            onClick={openBulkUploadModal}
             title="Bulk Upload Questions via JSON"
           >
             <Upload size={16} />
@@ -760,15 +856,15 @@ export const QuestionsPage: React.FC = () => {
               type="button"
               onClick={() => handleSaveExamAndSectionCounts(false)}
               disabled={savingAllocation}
-              className="btn btn-primary btn-sm bg-teal-600 hover:bg-teal-700 flex items-center gap-1.5 text-xs"
+              className="btn btn-teal btn-sm flex items-center gap-1.5 text-xs"
             >
               <Save size={14} />
               <span>{savingAllocation ? 'Saving...' : 'Save Exam & Section Counts'}</span>
             </button>
             <button
               type="button"
-              onClick={() => setIsJsonModalOpen(true)}
-              className="btn btn-secondary btn-sm bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 flex items-center gap-1.5 text-xs"
+              onClick={openBulkUploadModal}
+              className="btn btn-indigo btn-sm flex items-center gap-1.5 text-xs"
             >
               <Upload size={14} />
               <span>Bulk Upload & Auto-Divide</span>
@@ -788,7 +884,8 @@ export const QuestionsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setAllocationFeedback(null)}
-              className="ml-3 font-bold opacity-70 hover:opacity-100"
+              className="ml-3 font-bold cursor-pointer"
+              style={{ background: 'none', border: 'none', color: 'inherit', fontSize: '16px' }}
             >
               ×
             </button>
@@ -806,8 +903,20 @@ export const QuestionsPage: React.FC = () => {
                 type="number"
                 min="1"
                 className="form-input text-sm font-black text-indigo-900 w-28"
-                value={examTotalLimit}
-                onChange={(e) => setExamTotalLimit(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                value={examTotalText}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setExamTotalText(raw);
+                  const n = parseInt(raw, 10);
+                  if (!Number.isNaN(n) && n >= 1) {
+                    setExamTotalLimit(n);
+                  }
+                }}
+                onBlur={() => {
+                  const n = Math.max(1, parseInt(examTotalText, 10) || examTotalLimit || 1);
+                  setExamTotalLimit(n);
+                  setExamTotalText(String(n));
+                }}
               />
               <span className="text-xs text-slate-500 font-semibold">
                 Questions Max
@@ -819,24 +928,37 @@ export const QuestionsPage: React.FC = () => {
             <label className="text-xs font-bold text-slate-700 block mb-1">
               2. Number of Sections to Divide Into
             </label>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <input
                 type="number"
                 min="1"
                 max="20"
                 className="form-input text-sm font-black text-teal-900 w-20 text-center"
-                value={sectionCountInput}
+                value={sectionCountText}
                 onChange={(e) => {
-                  const nextCount = Math.max(1, Math.min(20, Math.floor(Number(e.target.value) || 1)));
-                  handleAutoDivideSections(examTotalLimit, nextCount);
+                  const raw = e.target.value;
+                  setSectionCountText(raw);
+                  const n = parseInt(raw, 10);
+                  if (!Number.isNaN(n) && n >= 1 && n <= 20) {
+                    handleAutoDivideSections(parseInt(examTotalText, 10) || examTotalLimit, n, false);
+                  }
+                }}
+                onBlur={() => {
+                  const n = Math.max(1, Math.min(20, parseInt(sectionCountText, 10) || sectionCountInput || 1));
+                  setSectionCountInput(n);
+                  setSectionCountText(String(n));
                 }}
               />
               <button
                 type="button"
-                onClick={() => handleAutoDivideSections(examTotalLimit, sectionCountInput)}
-                className="btn btn-secondary btn-sm text-xs bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 whitespace-nowrap"
+                onClick={handleDivideAndSave}
+                disabled={savingAllocation}
+                className="btn btn-indigo btn-sm text-xs whitespace-nowrap"
+                title="Divide whole exam questions equally across sections and save immediately"
               >
-                Divide Equally ({examTotalLimit} ÷ {sectionCountInput})
+                {savingAllocation
+                  ? 'Dividing...'
+                  : `Divide Equally (${examTotalLimit} ÷ ${sectionCountInput})`}
               </button>
             </div>
           </div>
@@ -1132,8 +1254,21 @@ export const QuestionsPage: React.FC = () => {
                       type="number"
                       min="1"
                       className="form-input py-1 text-xs font-black text-indigo-900"
-                      value={examTotalLimit}
-                      onChange={(e) => setExamTotalLimit(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                      value={examTotalText}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setExamTotalText(raw);
+                        setBulkActionError(null);
+                        const n = parseInt(raw, 10);
+                        if (!Number.isNaN(n) && n >= 1) {
+                          setExamTotalLimit(n);
+                        }
+                      }}
+                      onBlur={() => {
+                        const n = Math.max(1, parseInt(examTotalText, 10) || examTotalLimit || 1);
+                        setExamTotalLimit(n);
+                        setExamTotalText(String(n));
+                      }}
                     />
                   </div>
 
@@ -1147,16 +1282,26 @@ export const QuestionsPage: React.FC = () => {
                         min="1"
                         max="20"
                         className="form-input py-1 w-16 text-xs font-black text-center"
-                        value={sectionCountInput}
+                        value={sectionCountText}
                         onChange={(e) => {
-                          const nextCount = Math.max(1, Math.min(20, Math.floor(Number(e.target.value) || 1)));
-                          handleAutoDivideSections(examTotalLimit, nextCount);
+                          const raw = e.target.value;
+                          setSectionCountText(raw);
+                          setBulkActionError(null);
+                          const n = parseInt(raw, 10);
+                          if (!Number.isNaN(n) && n >= 1 && n <= 20) {
+                            handleAutoDivideSections(parseInt(examTotalText, 10) || examTotalLimit, n, false);
+                          }
+                        }}
+                        onBlur={() => {
+                          const n = Math.max(1, Math.min(20, parseInt(sectionCountText, 10) || sectionCountInput || 1));
+                          setSectionCountInput(n);
+                          setSectionCountText(String(n));
                         }}
                       />
                       <button
                         type="button"
-                        onClick={() => handleAutoDivideSections(examTotalLimit, sectionCountInput)}
-                        className="btn btn-secondary btn-sm text-[11px] py-1 px-2 bg-indigo-50 border-indigo-200 text-indigo-700"
+                        onClick={() => handleAutoDivideSections(undefined, undefined, true)}
+                        className="btn btn-indigo btn-sm text-[11px] py-1 px-2 whitespace-nowrap"
                       >
                         Auto-Divide
                       </button>
@@ -1177,6 +1322,21 @@ export const QuestionsPage: React.FC = () => {
                     </select>
                   </div>
                 </div>
+
+                {allocatedSectionSum !== Number(examTotalLimit) && (
+                  <div className="p-2 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 flex items-center justify-between gap-2 flex-wrap">
+                    <span>
+                      <strong>Mismatch:</strong> Sections sum is <strong>{allocatedSectionSum}</strong>, but Whole Exam Limit is <strong>{examTotalLimit}</strong>.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleAutoDivideSections(undefined, undefined, true)}
+                      className="btn btn-indigo btn-sm text-xs py-1 px-2"
+                    >
+                      Auto-Divide Now ({examTotalLimit} ÷ {sectionCountInput})
+                    </button>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {sectionAllocations.map((sec, idx) => (
@@ -1208,14 +1368,20 @@ export const QuestionsPage: React.FC = () => {
 
               {/* STEP 2: UPLOAD OR PASTE QUESTIONS */}
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <label className="form-label font-bold text-slate-800">
                     Step 2: Upload .JSON File or Paste Bulk Questions
+                    {jsonFileName && (
+                      <span className="ml-2 text-emerald-700 font-semibold">
+                        (Loaded: {jsonFileName})
+                      </span>
+                    )}
                   </label>
                   <button
                     type="button"
                     onClick={downloadJsonTemplate}
-                    className="text-xs text-indigo-600 hover:text-indigo-800 font-bold"
+                    className="text-xs text-indigo-600 font-bold cursor-pointer"
+                    style={{ background: 'none', border: 'none', textDecoration: 'underline' }}
                   >
                     Download Section-Matched Sample JSON
                   </button>
@@ -1223,7 +1389,7 @@ export const QuestionsPage: React.FC = () => {
 
                 <input
                   type="file"
-                  accept=".json,application/json"
+                  accept=".json,application/json,.txt"
                   onChange={handleJsonFileSelect}
                   className="form-input text-xs"
                 />
@@ -1233,22 +1399,50 @@ export const QuestionsPage: React.FC = () => {
                   rows={6}
                   placeholder={`{\n  "questions": [\n    {\n      "question_number": 1,\n      "section_name": "${sectionAllocations[0]?.name || 'English Comprehension'}",\n      "question_text": "Sample Question Text",\n      "topic": "Vocabulary",\n      "options": [\n        { "option_label": "A", "option_text": "Choice 1" },\n        { "option_label": "B", "option_text": "Choice 2" },\n        { "option_label": "C", "option_text": "Choice 3" },\n        { "option_label": "D", "option_text": "Choice 4" }\n      ],\n      "correct_option_label": "A"\n    }\n  ]\n}`}
                   value={jsonContent}
-                  onChange={(e) => setJsonContent(e.target.value)}
+                  onChange={(e) => {
+                    setJsonContent(e.target.value);
+                    setBulkActionError(null);
+                  }}
                 />
               </div>
 
               {/* REPLACE EXISTING CHECKBOX */}
-              <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                <input
-                  type="checkbox"
-                  id="jsonReplaceCheck"
-                  checked={jsonReplace}
-                  onChange={(e) => setJsonReplace(e.target.checked)}
-                />
-                <label htmlFor="jsonReplaceCheck" className="text-xs text-slate-700 cursor-pointer font-medium">
-                  <strong>Replace existing questions for this exam</strong> (If unchecked, appends only up to the remaining exam limit of {remainingExamSlots} questions)
-                </label>
+              <div className="flex items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex-wrap">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="jsonReplaceCheck"
+                    checked={jsonReplace}
+                    onChange={(e) => {
+                      setJsonReplace(e.target.checked);
+                      setBulkActionError(null);
+                    }}
+                  />
+                  <label htmlFor="jsonReplaceCheck" className="text-xs text-slate-700 cursor-pointer font-medium">
+                    <strong>Replace existing questions for this exam</strong> (Currently {allExamQuestions.length}/{activeExamLimit} uploaded; {remainingExamSlots} slot(s) open in append mode)
+                  </label>
+                </div>
+                {!jsonReplace && remainingExamSlots === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setJsonReplace(true);
+                      setBulkActionError(null);
+                    }}
+                    className="btn btn-teal btn-sm text-xs py-1 px-2"
+                  >
+                    Enable Replace Mode
+                  </button>
+                )}
               </div>
+
+              {/* INLINE ACTION ERROR BANNER */}
+              {bulkActionError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 flex items-center gap-2 font-semibold">
+                  <AlertCircle size={15} className="text-red-600 flex-shrink-0" />
+                  <span>{bulkActionError}</span>
+                </div>
+              )}
 
               {/* STEP 3: LIVE DIVISION & LIMIT PREVIEW */}
               {bulkPreview.parseError && (
@@ -1286,21 +1480,21 @@ export const QuestionsPage: React.FC = () => {
                       <strong>Exam Question Limit Enforced:</strong> Your upload contains{' '}
                       <strong>{bulkPreview.result.inputCount}</strong> questions, but this exam only has room for{' '}
                       <strong>{bulkPreview.result.acceptedCount}</strong> question(s) (Whole Exam Limit:{' '}
-                      <strong>{bulkPreview.result.examLimit}</strong>). Only the first{' '}
-                      <strong>{bulkPreview.result.acceptedCount}</strong> questions will be imported and divided across sections.
+                      <strong>{bulkPreview.result.examLimit}</strong>). Only{' '}
+                      <strong>{bulkPreview.result.acceptedCount}</strong> question(s) will be imported and divided across sections.
                     </div>
                   )}
 
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs border-collapse">
                       <thead>
-                        <tr className="bg-slate-200/70 text-slate-700 text-left">
-                          <th className="py-1.5 px-2.5 rounded-tl">Section Name</th>
+                        <tr className="bg-slate-200 text-slate-700 text-left">
+                          <th className="py-1.5 px-2.5">Section Name</th>
                           <th className="py-1.5 px-2.5 text-center">Target Quota</th>
                           <th className="py-1.5 px-2.5 text-center">Existing</th>
                           <th className="py-1.5 px-2.5 text-center">Content Matched</th>
                           <th className="py-1.5 px-2.5 text-center">Uploading Now</th>
-                          <th className="py-1.5 px-2.5 text-center rounded-tr">Final Count</th>
+                          <th className="py-1.5 px-2.5 text-center">Final Count</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1346,14 +1540,9 @@ export const QuestionsPage: React.FC = () => {
               </button>
               <button
                 type="button"
-                className="btn btn-primary bg-indigo-600 hover:bg-indigo-700"
+                className="btn btn-indigo"
                 onClick={handleExecuteJsonBulkUpload}
-                disabled={
-                  isUploadingJson ||
-                  allocatedSectionSum !== Number(examTotalLimit) ||
-                  Boolean(bulkPreview.parseError) ||
-                  (bulkPreview.result !== null && bulkPreview.result.acceptedCount === 0)
-                }
+                disabled={isUploadingJson}
               >
                 {isUploadingJson
                   ? 'Dividing & Importing...'

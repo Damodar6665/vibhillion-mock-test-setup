@@ -53,6 +53,7 @@ export const ExamsPage: React.FC = () => {
   const [session, setSession] = useState('Shift 1');
   const [description, setDescription] = useState('');
   const [totalQuestions, setTotalQuestions] = useState(100);
+  const [totalQuestionsText, setTotalQuestionsText] = useState('100');
   const [totalDurationSeconds, setTotalDurationSeconds] = useState(3600); // 60 mins
   const [totalMarks, setTotalMarks] = useState(200);
   const [positiveMarks, setPositiveMarks] = useState(2.0);
@@ -61,6 +62,7 @@ export const ExamsPage: React.FC = () => {
 
   // Section-wise allocation drafts inside Exam Modal
   const [sectionCountInput, setSectionCountInput] = useState(4);
+  const [sectionCountText, setSectionCountText] = useState('4');
   const [sectionDrafts, setSectionDrafts] = useState<SectionDraft[]>([
     { name: 'English Comprehension', question_count: 25 },
     { name: 'General Intelligence & Reasoning', question_count: 25 },
@@ -101,13 +103,18 @@ export const ExamsPage: React.FC = () => {
     return exams.filter((e) => e.category_id === selectedCategoryFilter);
   }, [exams, selectedCategoryFilter]);
 
-  const handleAutoDivideSections = (targetTotal = totalQuestions, targetSecCount = sectionCountInput) => {
-    const safeSecCount = Math.max(1, Math.min(20, Math.floor(Number(targetSecCount) || 1)));
-    const safeTotal = Math.max(1, Math.floor(Number(targetTotal) || 1));
+  const handleAutoDivideSections = (targetTotal?: number, targetSecCount?: number) => {
+    const parsedTotal = targetTotal !== undefined ? targetTotal : (parseInt(totalQuestionsText, 10) || totalQuestions || 100);
+    const parsedSec = targetSecCount !== undefined ? targetSecCount : (parseInt(sectionCountText, 10) || sectionCountInput || 1);
+    const safeSecCount = Math.max(1, Math.min(20, Math.floor(Number(parsedSec) || 1)));
+    const safeTotal = Math.max(1, Math.floor(Number(parsedTotal) || 1));
     const counts = divideTotalAcrossSections(safeTotal, safeSecCount);
     const defaultNames = getDefaultSectionNames(safeSecCount);
 
+    setTotalQuestions(safeTotal);
+    setTotalQuestionsText(String(safeTotal));
     setSectionCountInput(safeSecCount);
+    setSectionCountText(String(safeSecCount));
     setSectionDrafts((prev) =>
       counts.map((cnt, idx) => ({
         id: prev[idx]?.id,
@@ -144,12 +151,14 @@ export const ExamsPage: React.FC = () => {
     setSession('Shift 1');
     setDescription('');
     setTotalQuestions(100);
+    setTotalQuestionsText('100');
     setTotalDurationSeconds(3600);
     setTotalMarks(200);
     setPositiveMarks(2.0);
     setNegativeMarks(0.5);
     setStatus('published');
     setSectionCountInput(4);
+    setSectionCountText('4');
     setSectionDrafts([
       { name: 'English Comprehension', question_count: 25 },
       { name: 'General Intelligence & Reasoning', question_count: 25 },
@@ -170,6 +179,7 @@ export const ExamsPage: React.FC = () => {
     setSession(exam.session || 'Shift 1');
     setDescription(exam.description || '');
     setTotalQuestions(exam.total_questions);
+    setTotalQuestionsText(String(exam.total_questions));
     setTotalDurationSeconds(exam.total_duration_seconds);
     setTotalMarks(exam.total_marks);
     setPositiveMarks(exam.positive_marks);
@@ -182,6 +192,7 @@ export const ExamsPage: React.FC = () => {
 
     if (existingSecs.length > 0) {
       setSectionCountInput(existingSecs.length);
+      setSectionCountText(String(existingSecs.length));
       setSectionDrafts(
         existingSecs.map((s) => ({
           id: s.id,
@@ -193,6 +204,7 @@ export const ExamsPage: React.FC = () => {
       const counts = divideTotalAcrossSections(exam.total_questions || 100, 4);
       const names = getDefaultSectionNames(4);
       setSectionCountInput(4);
+      setSectionCountText('4');
       setSectionDrafts(counts.map((cnt, idx) => ({ name: names[idx], question_count: cnt })));
     }
 
@@ -436,7 +448,8 @@ export const ExamsPage: React.FC = () => {
                       <td>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <button
-                            className="btn btn-primary btn-sm flex items-center gap-1 bg-teal-600 hover:bg-teal-700 text-white text-xs px-2.5 py-1"
+                            type="button"
+                            className="btn btn-teal btn-sm flex items-center gap-1 text-xs px-2.5 py-1"
                             onClick={() => navigate(`/questions?exam_id=${exam.id}`)}
                             title="Configure Exam/Section Counts & Add Questions"
                           >
@@ -444,7 +457,8 @@ export const ExamsPage: React.FC = () => {
                             <span>Add Questions</span>
                           </button>
                           <button
-                            className="btn btn-secondary btn-sm flex items-center gap-1 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs px-2.5 py-1"
+                            type="button"
+                            className="btn btn-indigo btn-sm flex items-center gap-1 text-xs px-2.5 py-1"
                             onClick={() => navigate(`/questions?exam_id=${exam.id}&open_bulk=1`)}
                             title="Bulk Upload & Divide Questions Section-Wise"
                           >
@@ -580,11 +594,21 @@ export const ExamsPage: React.FC = () => {
                       type="number"
                       min="1"
                       className="form-input font-bold"
-                      value={totalQuestions}
+                      value={totalQuestionsText}
                       onChange={(e) => {
-                        const nextTotal = Math.max(1, Number(e.target.value) || 1);
-                        setTotalQuestions(nextTotal);
-                        setTotalMarks(nextTotal * positiveMarks);
+                        const raw = e.target.value;
+                        setTotalQuestionsText(raw);
+                        const n = parseInt(raw, 10);
+                        if (!Number.isNaN(n) && n >= 1) {
+                          setTotalQuestions(n);
+                          setTotalMarks(n * positiveMarks);
+                        }
+                      }}
+                      onBlur={() => {
+                        const n = Math.max(1, parseInt(totalQuestionsText, 10) || totalQuestions || 1);
+                        setTotalQuestions(n);
+                        setTotalQuestionsText(String(n));
+                        setTotalMarks(n * positiveMarks);
                       }}
                       required
                     />
@@ -610,7 +634,7 @@ export const ExamsPage: React.FC = () => {
                 </div>
 
                 {/* SECTION-WISE QUESTION COUNT DIVISION SETUP */}
-                <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3">
+                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <SplitSquareHorizontal size={16} className="text-indigo-700" />
@@ -618,23 +642,32 @@ export const ExamsPage: React.FC = () => {
                         Section-Wise Question Count Setup
                       </h4>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <label className="text-xs font-semibold text-slate-700">Number of Sections:</label>
                       <input
                         type="number"
                         min="1"
                         max="20"
                         className="form-input w-16 py-1 px-2 text-xs font-bold text-center"
-                        value={sectionCountInput}
+                        value={sectionCountText}
                         onChange={(e) => {
-                          const nextCount = Math.max(1, Math.min(20, Number(e.target.value) || 1));
-                          handleAutoDivideSections(totalQuestions, nextCount);
+                          const raw = e.target.value;
+                          setSectionCountText(raw);
+                          const n = parseInt(raw, 10);
+                          if (!Number.isNaN(n) && n >= 1 && n <= 20) {
+                            handleAutoDivideSections(parseInt(totalQuestionsText, 10) || totalQuestions, n);
+                          }
+                        }}
+                        onBlur={() => {
+                          const n = Math.max(1, Math.min(20, parseInt(sectionCountText, 10) || sectionCountInput || 1));
+                          setSectionCountInput(n);
+                          setSectionCountText(String(n));
                         }}
                       />
                       <button
                         type="button"
-                        onClick={() => handleAutoDivideSections(totalQuestions, sectionCountInput)}
-                        className="btn btn-secondary btn-sm text-xs bg-white border-indigo-300 text-indigo-700 hover:bg-indigo-100"
+                        onClick={() => handleAutoDivideSections()}
+                        className="btn btn-indigo btn-sm text-xs whitespace-nowrap"
                       >
                         Auto-Divide ({totalQuestions} ÷ {sectionCountInput})
                       </button>
