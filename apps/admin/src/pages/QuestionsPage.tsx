@@ -3,7 +3,7 @@
 // File: apps/admin/src/pages/QuestionsPage.tsx
 // ==============================================================================
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -51,6 +51,8 @@ export const QuestionsPage: React.FC = () => {
   const [sections, setSections] = useState<ExamSection[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string>('');
   const [selectedTopicFilter, setSelectedTopicFilter] = useState<string>('');
+  const [topicViewMode, setTopicViewMode] = useState<'table' | 'cards'>('table');
+  const questionsListRef = useRef<HTMLDivElement | null>(null);
   const [questions, setQuestions] = useState<any[]>([]);
   const [allExamQuestions, setAllExamQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -395,6 +397,62 @@ export const QuestionsPage: React.FC = () => {
     () => buildSectionTopicAnalysis(sections, allExamQuestions),
     [sections, allExamQuestions]
   );
+
+  // Flattened Topic-Wise Analysis Table rows across all sections
+  const allTopicsTableRows = useMemo(() => {
+    const rows: Array<{
+      section_id: string;
+      section_name: string;
+      topic: string;
+      subtopic: string;
+      count: number;
+      sectionSharePct: number;
+      examSharePct: number;
+      easy: number;
+      medium: number;
+      hard: number;
+      questionNumbers: number[];
+    }> = [];
+    const totalExamQs = Math.max(1, allExamQuestions.length);
+
+    sectionTopicAnalysis.forEach((secGroup) => {
+      secGroup.topics.forEach((t) => {
+        rows.push({
+          section_id: secGroup.section_id,
+          section_name: secGroup.section_name,
+          topic: t.topic,
+          subtopic: t.subtopic,
+          count: t.count,
+          sectionSharePct: t.percentage,
+          examSharePct: Number(((t.count / totalExamQs) * 100).toFixed(1)),
+          easy: t.easy,
+          medium: t.medium,
+          hard: t.hard,
+          questionNumbers: [...t.questionNumbers].sort((a, b) => a - b),
+        });
+      });
+    });
+
+    return rows.sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
+  }, [sectionTopicAnalysis, allExamQuestions.length]);
+
+  const handleClickTopicFromAnalysis = (sectionId: string, topicName: string) => {
+    const isSame =
+      selectedSectionId === sectionId &&
+      selectedTopicFilter.toLowerCase() === topicName.toLowerCase();
+
+    if (isSame) {
+      setSelectedTopicFilter('');
+      return;
+    }
+
+    setSelectedSectionId(sectionId);
+    setQuestions(allExamQuestions.filter((q) => q.section_id === sectionId));
+    setSelectedTopicFilter(topicName);
+    setTimeout(() => {
+      questionsListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  };
 
   // Questions displayed in table (respects both Section filter AND clicked Topic pill filter)
   const displayedQuestions = useMemo(() => {
@@ -973,115 +1031,221 @@ export const QuestionsPage: React.FC = () => {
               </div>
             </div>
 
-            {selectedTopicFilter && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs bg-teal-100 text-teal-800 font-bold px-2.5 py-1 rounded-full border border-teal-300">
-                  Active Topic: {selectedTopicFilter}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedTopicFilter('')}
-                  className="btn btn-secondary btn-sm text-xs"
-                >
-                  Clear Topic Filter
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setTopicViewMode('table')}
+                className={`btn btn-sm text-xs ${topicViewMode === 'table' ? 'btn-teal' : 'btn-secondary'}`}
+              >
+                Topic-Wise Table ({allTopicsTableRows.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTopicViewMode('cards')}
+                className={`btn btn-sm text-xs ${topicViewMode === 'cards' ? 'btn-teal' : 'btn-secondary'}`}
+              >
+                Section Cards ({sectionTopicAnalysis.length})
+              </button>
+              {selectedTopicFilter && (
+                <>
+                  <span className="text-xs bg-teal-100 text-teal-800 font-bold px-2.5 py-1 rounded-full border border-teal-300">
+                    Active Topic: {selectedTopicFilter}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTopicFilter('')}
+                    className="btn btn-secondary btn-sm text-xs"
+                  >
+                    Clear Topic Filter
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            {sectionTopicAnalysis.map((secGroup, sIdx) => (
-              <div
-                key={secGroup.section_id}
-                className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col justify-between gap-2.5"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-200">
-                    <div>
-                      <span className="text-[10px] font-black bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded">
-                        SEC {sIdx + 1}
-                      </span>
-                      <h4 className="font-bold text-xs text-slate-900 mt-1">
-                        {secGroup.section_name}
-                      </h4>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-black text-indigo-700">
-                        {secGroup.uploaded_count} / {secGroup.target_count} Qs
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-semibold">
-                        {secGroup.unique_topic_count} Topic(s)
-                      </div>
-                    </div>
-                  </div>
-
-                  {secGroup.topics.length === 0 ? (
-                    <div className="text-[11px] text-slate-400 py-3 text-center">
-                      No questions uploaded in this section yet.
-                    </div>
+          {topicViewMode === 'table' ? (
+            <div className="table-responsive" style={{ maxHeight: '340px', overflowY: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '44px' }}>#</th>
+                    <th>Topic Name (Click to Display Related Questions)</th>
+                    <th>Section</th>
+                    <th className="text-center">Questions</th>
+                    <th className="text-center">Share %</th>
+                    <th>Difficulty</th>
+                    <th>Question #s</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allTopicsTableRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center text-xs text-slate-400 py-6">
+                        No questions uploaded yet for this exam.
+                      </td>
+                    </tr>
                   ) : (
-                    <div className="space-y-1.5" style={{ maxHeight: '190px', overflowY: 'auto' }}>
-                      {secGroup.topics.map((t) => {
-                        const isTopicSelected =
-                          selectedSectionId === secGroup.section_id &&
-                          selectedTopicFilter.toLowerCase() === t.topic.toLowerCase();
-                        return (
-                          <button
-                            key={t.topic}
-                            type="button"
-                            onClick={() => {
-                              setSelectedSectionId(secGroup.section_id);
-                              setQuestions(allExamQuestions.filter((q) => q.section_id === secGroup.section_id));
-                              setSelectedTopicFilter(isTopicSelected ? '' : t.topic);
-                            }}
-                            className={`w-full text-left p-2 rounded-lg border transition-all cursor-pointer ${
-                              isTopicSelected
-                                ? 'bg-teal-600 text-white border-teal-700'
-                                : 'bg-white border-slate-200 text-slate-800'
-                            }`}
-                            title={`Click to view ${t.count} question(s) in ${secGroup.section_name} → ${t.topic}`}
-                          >
-                            <div className="flex items-center justify-between gap-2 text-[11px]">
-                              <span className="font-bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {t.topic}
-                              </span>
-                              <span
-                                className={`font-black px-1.5 py-0.5 rounded whitespace-nowrap ${
-                                  isTopicSelected
-                                    ? 'bg-white text-teal-800'
-                                    : 'bg-indigo-50 text-indigo-800'
-                                }`}
-                              >
-                                {t.count} Qs ({t.percentage}%)
-                              </span>
-                            </div>
-                            <div
-                              className="w-full h-1.5 rounded-full overflow-hidden mt-1"
-                              style={{ backgroundColor: isTopicSelected ? 'rgba(255,255,255,0.25)' : '#e2e8f0' }}
+                    allTopicsTableRows.map((row, idx) => {
+                      const isRowActive =
+                        selectedSectionId === row.section_id &&
+                        selectedTopicFilter.toLowerCase() === row.topic.toLowerCase();
+                      return (
+                        <tr
+                          key={`${row.section_id}-${row.topic}`}
+                          style={isRowActive ? { backgroundColor: '#f0fdfa' } : undefined}
+                        >
+                          <td className="text-xs font-bold text-slate-400">{idx + 1}</td>
+                          <td>
+                            <button
+                              type="button"
+                              onClick={() => handleClickTopicFromAnalysis(row.section_id, row.topic)}
+                              className="text-left cursor-pointer"
+                              style={{ background: 'none', border: 'none', padding: 0 }}
+                              title={`Click to view all ${row.count} related question(s) on ${row.topic}`}
                             >
                               <div
-                                className="h-full"
-                                style={{
-                                  width: `${Math.max(6, t.percentage)}%`,
-                                  backgroundColor: isTopicSelected ? '#ffffff' : '#0d9488',
-                                }}
-                              />
+                                className="font-bold text-xs text-teal-700"
+                                style={{ textDecoration: 'underline' }}
+                              >
+                                {row.topic}
+                              </div>
+                              {row.subtopic && (
+                                <div className="text-[10px] text-slate-500">{row.subtopic}</div>
+                              )}
+                            </button>
+                          </td>
+                          <td>
+                            <span className="text-[11px] font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                              {row.section_name}
+                            </span>
+                          </td>
+                          <td className="text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleClickTopicFromAnalysis(row.section_id, row.topic)}
+                              className="font-black text-xs bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full cursor-pointer border border-indigo-200"
+                            >
+                              {row.count} Qs
+                            </button>
+                          </td>
+                          <td className="text-center text-xs font-bold text-slate-700">
+                            {row.examSharePct}%
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-1 text-[10px] font-bold">
+                              <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">
+                                E:{row.easy}
+                              </span>
+                              <span className="bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">
+                                M:{row.medium}
+                              </span>
+                              <span className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
+                                H:{row.hard}
+                              </span>
                             </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                          </td>
+                          <td className="text-[11px] text-slate-500 font-mono">
+                            {row.questionNumbers.slice(0, 8).map((n) => `Q${n}`).join(', ')}
+                            {row.questionNumbers.length > 8 ? ` +${row.questionNumbers.length - 8}` : ''}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
-                </div>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              {sectionTopicAnalysis.map((secGroup, sIdx) => (
+                <div
+                  key={secGroup.section_id}
+                  className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col justify-between gap-2.5"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-200">
+                      <div>
+                        <span className="text-[10px] font-black bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded">
+                          SEC {sIdx + 1}
+                        </span>
+                        <h4 className="font-bold text-xs text-slate-900 mt-1">
+                          {secGroup.section_name}
+                        </h4>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs font-black text-indigo-700">
+                          {secGroup.uploaded_count} / {secGroup.target_count} Qs
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-semibold">
+                          {secGroup.unique_topic_count} Topic(s)
+                        </div>
+                      </div>
+                    </div>
 
-                <div className="flex items-center justify-between text-[10px] font-bold pt-2 border-t border-slate-200 text-slate-500">
-                  <span className="text-emerald-700">Easy: {secGroup.easy}</span>
-                  <span className="text-amber-600">Med: {secGroup.medium}</span>
-                  <span className="text-red-600">Hard: {secGroup.hard}</span>
+                    {secGroup.topics.length === 0 ? (
+                      <div className="text-[11px] text-slate-400 py-3 text-center">
+                        No questions uploaded in this section yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5" style={{ maxHeight: '190px', overflowY: 'auto' }}>
+                        {secGroup.topics.map((t) => {
+                          const isTopicSelected =
+                            selectedSectionId === secGroup.section_id &&
+                            selectedTopicFilter.toLowerCase() === t.topic.toLowerCase();
+                          return (
+                            <button
+                              key={t.topic}
+                              type="button"
+                              onClick={() => handleClickTopicFromAnalysis(secGroup.section_id, t.topic)}
+                              className={`w-full text-left p-2 rounded-lg border transition-all cursor-pointer ${
+                                isTopicSelected
+                                  ? 'bg-teal-600 text-white border-teal-700'
+                                  : 'bg-white border-slate-200 text-slate-800'
+                              }`}
+                              title={`Click to view ${t.count} question(s) in ${secGroup.section_name} → ${t.topic}`}
+                            >
+                              <div className="flex items-center justify-between gap-2 text-[11px]">
+                                <span className="font-bold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {t.topic}
+                                </span>
+                                <span
+                                  className={`font-black px-1.5 py-0.5 rounded whitespace-nowrap ${
+                                    isTopicSelected
+                                      ? 'bg-white text-teal-800'
+                                      : 'bg-indigo-50 text-indigo-800'
+                                  }`}
+                                >
+                                  {t.count} Qs ({t.percentage}%)
+                                </span>
+                              </div>
+                              <div
+                                className="w-full h-1.5 rounded-full overflow-hidden mt-1"
+                                style={{ backgroundColor: isTopicSelected ? 'rgba(255,255,255,0.25)' : '#e2e8f0' }}
+                              >
+                                <div
+                                  className="h-full"
+                                  style={{
+                                    width: `${Math.max(6, t.percentage)}%`,
+                                    backgroundColor: isTopicSelected ? '#ffffff' : '#0d9488',
+                                  }}
+                                />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] font-bold pt-2 border-t border-slate-200 text-slate-500">
+                    <span className="text-emerald-700">Easy: {secGroup.easy}</span>
+                    <span className="text-amber-600">Med: {secGroup.medium}</span>
+                    <span className="text-red-600">Hard: {secGroup.hard}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1316,7 +1480,10 @@ export const QuestionsPage: React.FC = () => {
       </div>
 
       {/* Section Filter Bar */}
-      <div className="content-card p-4 mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+      <div
+        ref={questionsListRef}
+        className="content-card p-4 mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3"
+      >
         <div className="flex items-center gap-3 flex-wrap">
           <label className="text-sm font-bold text-slate-700">Filter By Section:</label>
           <select

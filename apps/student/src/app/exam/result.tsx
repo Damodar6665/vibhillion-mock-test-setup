@@ -53,6 +53,7 @@ export default function ExamResultScreen() {
   // Interactive filters
   const [statusFilter, setStatusFilter] = useState<'all' | 'correct' | 'wrong' | 'unattempted' | 'answered'>('all');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>('all');
+  const [selectedTopicFilter, setSelectedTopicFilter] = useState<string>('all');
   const scrollViewRef = React.useRef<any>(null);
   const [reviewYPos, setReviewYPos] = useState<number>(0);
 
@@ -96,7 +97,57 @@ export default function ExamResultScreen() {
   const realUnattemptedShare = totalCount > 0 ? Math.round((realUnattemptedCount / totalCount) * 100) : 0;
   const realAnsweredShare = totalCount > 0 ? Math.round((realAnsweredCount / totalCount) * 100) : 0;
 
-  // Filter questions dynamically based on selected status bucket and subject
+  // Dynamic Topic-Wise Summary across ALL questions
+  const topicsSummary = React.useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        topic: string;
+        sectionName: string;
+        qs: number;
+        answered: number;
+        correct: number;
+        wrong: number;
+        skipped: number;
+      }
+    >();
+
+    solutions.forEach((s) => {
+      const topicName = (s.topic && s.topic.trim()) || 'General Topic';
+      const secName = s.section_name || 'General';
+      const key = topicName.toLowerCase();
+
+      if (!map.has(key)) {
+        map.set(key, {
+          topic: topicName,
+          sectionName: secName,
+          qs: 0,
+          answered: 0,
+          correct: 0,
+          wrong: 0,
+          skipped: 0,
+        });
+      }
+      const entry = map.get(key)!;
+      entry.qs += 1;
+      if (s.user_selected_option_id) {
+        entry.answered += 1;
+        if (s.is_correct) entry.correct += 1;
+        else entry.wrong += 1;
+      } else {
+        entry.skipped += 1;
+      }
+    });
+
+    return Array.from(map.values())
+      .map((item) => ({
+        ...item,
+        acc: item.answered > 0 ? `${Math.round((item.correct / item.answered) * 100)}%` : '—',
+      }))
+      .sort((a, b) => b.qs - a.qs || a.topic.localeCompare(b.topic));
+  }, [solutions]);
+
+  // Filter questions dynamically based on selected status bucket, subject, and topic
   const filteredSolutions = React.useMemo(() => {
     let list = solutions;
 
@@ -107,6 +158,13 @@ export default function ExamResultScreen() {
           secName.toLowerCase().includes(selectedSubjectFilter.toLowerCase()) ||
           (s.topic && s.topic.toLowerCase().includes(selectedSubjectFilter.toLowerCase()))
         );
+      });
+    }
+
+    if (selectedTopicFilter !== 'all') {
+      list = list.filter((s) => {
+        const topicName = (s.topic && s.topic.trim()) || 'General Topic';
+        return topicName.toLowerCase() === selectedTopicFilter.toLowerCase();
       });
     }
 
@@ -123,7 +181,7 @@ export default function ExamResultScreen() {
       return list.filter((s) => !s.user_selected_option_id);
     }
     return list;
-  }, [solutions, statusFilter, selectedSubjectFilter]);
+  }, [solutions, statusFilter, selectedSubjectFilter, selectedTopicFilter]);
 
   const toggleExpand = (qKey: string | number) => {
     setExpandedQuestions((prev) => ({
@@ -651,6 +709,169 @@ export default function ExamResultScreen() {
           Swipe sideways to see all columns. Accuracy is correct ÷ attempted; small samples stay unclassified.
         </Text>
 
+        {/* ========================================================================= */}
+        {/* TOPIC-WISE ANALYSIS TABLE (CLICK ANY TOPIC NAME TO VIEW RELATED QUESTIONS) */}
+        {/* ========================================================================= */}
+        {topicsSummary.length > 0 && (
+          <>
+            <Text style={[styles.sectionHeading, { marginTop: 22 }]}>
+              Topic-wise analysis ({topicsSummary.length} Topics)
+            </Text>
+            <Text style={styles.subjectDescText}>
+              Tap any Topic Name or number pill to display all related questions for that topic in the Review Answers section below.
+            </Text>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+              <View style={[styles.tableCard, { minWidth: 460 }]}>
+                <View style={styles.tableHeaderRow}>
+                  <Text style={[styles.tableColHeader, { flex: 2.4 }]}>TOPIC NAME (CLICK TO VIEW)</Text>
+                  <Text style={[styles.tableColHeader, { width: 44, textAlign: 'center' }]}>QS</Text>
+                  <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#0D9488' }]}>ANSWERED</Text>
+                  <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#059669' }]}>CORRECT</Text>
+                  <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#DC2626' }]}>WRONG</Text>
+                  <Text style={[styles.tableColHeader, { width: 52, textAlign: 'center', color: '#4F46E5' }]}>SKIPPED</Text>
+                  <Text style={[styles.tableColHeader, { width: 44, textAlign: 'right' }]}>ACC</Text>
+                </View>
+                <View style={styles.tableDivider} />
+
+                {topicsSummary.map((t) => {
+                  const isTopicSelected = selectedTopicFilter.toLowerCase() === t.topic.toLowerCase();
+                  return (
+                    <React.Fragment key={t.topic}>
+                      <View
+                        style={[
+                          styles.tableDataRow,
+                          isTopicSelected && { backgroundColor: '#F0FDFA', borderRadius: 6 },
+                        ]}
+                      >
+                        {/* Clickable Topic Name */}
+                        <TouchableOpacity
+                          style={{ flex: 2.4, paddingRight: 6 }}
+                          onPress={() => {
+                            const nextTopic = isTopicSelected ? 'all' : t.topic;
+                            setSelectedTopicFilter(nextTopic);
+                            setSelectedSubjectFilter('all');
+                            setStatusFilter('all');
+                            if (nextTopic !== 'all') {
+                              // Auto-expand the matching topic's questions for instant visibility
+                              const toExpand: Record<string, boolean> = {};
+                              solutions.forEach((s) => {
+                                const qTopic = (s.topic && s.topic.trim()) || 'General Topic';
+                                if (qTopic.toLowerCase() === nextTopic.toLowerCase()) {
+                                  toExpand[s.question_number] = true;
+                                }
+                              });
+                              setExpandedQuestions((prev) => ({ ...prev, ...toExpand }));
+                              scrollToReview();
+                            }
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.tableDataText,
+                              {
+                                fontWeight: '700',
+                                color: isTopicSelected ? '#0D9488' : '#0F766E',
+                                textDecorationLine: 'underline',
+                              },
+                            ]}
+                          >
+                            {t.topic}
+                          </Text>
+                          <Text style={{ fontSize: 10, color: '#64748B', marginTop: 1 }}>
+                            {t.sectionName}
+                          </Text>
+                        </TouchableOpacity>
+
+                        {/* Total Qs Pill */}
+                        <TouchableOpacity
+                          style={[styles.subjectNumberPill, { borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', width: 40 }]}
+                          onPress={() => {
+                            setSelectedTopicFilter(t.topic);
+                            setSelectedSubjectFilter('all');
+                            setStatusFilter('all');
+                            scrollToReview();
+                          }}
+                        >
+                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#3730A3' }]}>
+                            {t.qs}
+                          </Text>
+                        </TouchableOpacity>
+
+                        {/* Answered Pill */}
+                        <TouchableOpacity
+                          style={[styles.subjectNumberPill, { borderColor: '#99F6E4', backgroundColor: '#F0FDFA', width: 46 }]}
+                          onPress={() => {
+                            setSelectedTopicFilter(t.topic);
+                            setSelectedSubjectFilter('all');
+                            setStatusFilter('answered');
+                            scrollToReview();
+                          }}
+                        >
+                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#0D9488' }]}>
+                            {t.answered}
+                          </Text>
+                        </TouchableOpacity>
+
+                        {/* Correct Pill */}
+                        <TouchableOpacity
+                          style={[styles.subjectNumberPill, { borderColor: '#A7F3D0', backgroundColor: '#ECFDF5', width: 46 }]}
+                          onPress={() => {
+                            setSelectedTopicFilter(t.topic);
+                            setSelectedSubjectFilter('all');
+                            setStatusFilter('correct');
+                            scrollToReview();
+                          }}
+                        >
+                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#059669' }]}>
+                            {t.correct}
+                          </Text>
+                        </TouchableOpacity>
+
+                        {/* Wrong Pill */}
+                        <TouchableOpacity
+                          style={[styles.subjectNumberPill, { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2', width: 46 }]}
+                          onPress={() => {
+                            setSelectedTopicFilter(t.topic);
+                            setSelectedSubjectFilter('all');
+                            setStatusFilter('wrong');
+                            scrollToReview();
+                          }}
+                        >
+                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#DC2626' }]}>
+                            {t.wrong}
+                          </Text>
+                        </TouchableOpacity>
+
+                        {/* Skipped Pill */}
+                        <TouchableOpacity
+                          style={[styles.subjectNumberPill, { borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', width: 46 }]}
+                          onPress={() => {
+                            setSelectedTopicFilter(t.topic);
+                            setSelectedSubjectFilter('all');
+                            setStatusFilter('unattempted');
+                            scrollToReview();
+                          }}
+                        >
+                          <Text style={[styles.tableDataText, { fontWeight: '800', color: '#4F46E5' }]}>
+                            {t.skipped}
+                          </Text>
+                        </TouchableOpacity>
+
+                        {/* Accuracy */}
+                        <Text style={[styles.tableDataText, { width: 44, textAlign: 'right', fontWeight: '700' }]}>
+                          {t.acc}
+                        </Text>
+                      </View>
+                      <View style={styles.tableDivider} />
+                    </React.Fragment>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </>
+        )}
+
         {/* NEXT STEPS ADVICE BOX */}
         <Text style={styles.sectionHeading}>Next steps</Text>
         <View style={styles.nextStepsCard}>
@@ -709,16 +930,36 @@ export default function ExamResultScreen() {
           {/* 4-STATUS FILTER CHIPS (ANSWERED FIRST AS REQUESTED) */}
           <View style={styles.filterChipsRow}>
             <TouchableOpacity
-              style={[styles.filterChip, statusFilter === 'all' && selectedSubjectFilter === 'all' && styles.filterChipActive]}
+              style={[
+                styles.filterChip,
+                statusFilter === 'all' && selectedSubjectFilter === 'all' && selectedTopicFilter === 'all' && styles.filterChipActive,
+              ]}
               onPress={() => {
                 setStatusFilter('all');
                 setSelectedSubjectFilter('all');
+                setSelectedTopicFilter('all');
               }}
             >
-              <Text style={[styles.filterChipText, statusFilter === 'all' && selectedSubjectFilter === 'all' && styles.filterChipTextActive]}>
+              <Text
+                style={[
+                  styles.filterChipText,
+                  statusFilter === 'all' && selectedSubjectFilter === 'all' && selectedTopicFilter === 'all' && styles.filterChipTextActive,
+                ]}
+              >
                 All ({totalCount})
               </Text>
             </TouchableOpacity>
+
+            {selectedTopicFilter !== 'all' && (
+              <TouchableOpacity
+                style={[styles.filterChip, { backgroundColor: '#0D9488', borderColor: '#0F766E' }]}
+                onPress={() => setSelectedTopicFilter('all')}
+              >
+                <Text style={[styles.filterChipText, { color: '#FFFFFF', fontWeight: '700' }]}>
+                  Topic: {selectedTopicFilter} ×
+                </Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={[styles.filterChip, statusFilter === 'answered' && styles.filterChipActiveAnswered]}

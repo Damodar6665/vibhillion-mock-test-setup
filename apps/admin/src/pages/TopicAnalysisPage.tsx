@@ -3,7 +3,7 @@
 // File: apps/admin/src/pages/TopicAnalysisPage.tsx
 // ==============================================================================
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   BookOpen,
   CheckCircle2,
@@ -23,6 +23,8 @@ import {
   Check,
   BarChart3,
   GraduationCap,
+  ChevronRight,
+  HelpCircle,
 } from 'lucide-react';
 import { adminService } from '../services/adminService';
 import {
@@ -66,6 +68,13 @@ export const TopicAnalysisPage: React.FC = () => {
   const [selectedSection, setSelectedSection] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'strong' | 'moderate' | 'weak'>('all');
+
+  // Selected topic for viewing related questions
+  const [selectedTopicForQuestions, setSelectedTopicForQuestions] = useState<{
+    topic: string;
+    sectionName?: string;
+  } | null>(null);
+  const relatedQuestionsRef = useRef<HTMLDivElement | null>(null);
 
   // Edit Modal State
   const [editingTopic, setEditingTopic] = useState<TopicRow | null>(null);
@@ -118,6 +127,100 @@ export const TopicAnalysisPage: React.FC = () => {
     });
     return map;
   }, [scopedSections]);
+
+  // Flat Topic-Wise Analysis Table across ALL scoped questions
+  const topicTableRows = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        topic: string;
+        subtopic: string;
+        sectionNames: Set<string>;
+        count: number;
+        easy: number;
+        medium: number;
+        hard: number;
+        questionNumbers: number[];
+      }
+    >();
+
+    scopedQuestions.forEach((q) => {
+      const secName = sectionMap[q.section_id] || q.section_name || 'General';
+      const inferred = inferQuestionTopic(q.question_text || q.text || '', secName, q.topic);
+      const topicName = inferred.topic;
+      const subtopicName = q.subtopic || inferred.subtopic || '';
+      const diff = String(q.difficulty || 'medium').toLowerCase();
+      const key = `${secName}|||${topicName}`.toLowerCase();
+
+      if (!map.has(key)) {
+        map.set(key, {
+          topic: topicName,
+          subtopic: subtopicName,
+          sectionNames: new Set([secName]),
+          count: 0,
+          easy: 0,
+          medium: 0,
+          hard: 0,
+          questionNumbers: [],
+        });
+      }
+      const entry = map.get(key)!;
+      entry.count += 1;
+      entry.sectionNames.add(secName);
+      if (diff === 'easy') entry.easy += 1;
+      else if (diff === 'hard') entry.hard += 1;
+      else entry.medium += 1;
+      if (q.question_number !== undefined) {
+        entry.questionNumbers.push(Number(q.question_number));
+      }
+    });
+
+    const totalQs = Math.max(1, scopedQuestions.length);
+    return Array.from(map.values())
+      .map((item) => ({
+        topic: item.topic,
+        subtopic: item.subtopic,
+        sectionName: Array.from(item.sectionNames).join(', '),
+        count: item.count,
+        sharePct: Number(((item.count / totalQs) * 100).toFixed(1)),
+        easy: item.easy,
+        medium: item.medium,
+        hard: item.hard,
+        questionNumbers: item.questionNumbers.sort((a, b) => a - b),
+      }))
+      .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
+  }, [scopedQuestions, sectionMap]);
+
+  // Related questions for the clicked topic name
+  const selectedTopicQuestions = useMemo(() => {
+    if (!selectedTopicForQuestions) return [];
+    const targetTopic = selectedTopicForQuestions.topic.toLowerCase();
+    const targetSec = selectedTopicForQuestions.sectionName?.toLowerCase();
+
+    return scopedQuestions.filter((q) => {
+      const secName = sectionMap[q.section_id] || q.section_name || 'General';
+      if (targetSec && secName.toLowerCase() !== targetSec) return false;
+      const inferred = inferQuestionTopic(q.question_text || q.text || '', secName, q.topic);
+      return inferred.topic.toLowerCase() === targetTopic;
+    });
+  }, [selectedTopicForQuestions, scopedQuestions, sectionMap]);
+
+  const handleInspectTopicQuestions = (topic: string, sectionName?: string) => {
+    const isSame =
+      selectedTopicForQuestions &&
+      selectedTopicForQuestions.topic.toLowerCase() === topic.toLowerCase() &&
+      (selectedTopicForQuestions.sectionName || '') === (sectionName || '');
+
+    if (isSame) {
+      setSelectedTopicForQuestions(null);
+      return;
+    }
+
+    setSelectedTopicForQuestions({ topic, sectionName });
+    setTimeout(() => {
+      relatedQuestionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
 
   // Aggregate topics dynamically across all scoped questions
   const topicsData = useMemo<TopicRow[]>(() => {
@@ -490,13 +593,14 @@ export const TopicAnalysisPage: React.FC = () => {
                   <div className="space-y-1.5" style={{ maxHeight: '190px', overflowY: 'auto' }}>
                     {secGroup.topics.map((t) => {
                       const isActive =
-                        selectedSection === secGroup.section_name &&
-                        searchQuery.toLowerCase() === t.topic.toLowerCase();
+                        selectedTopicForQuestions?.topic.toLowerCase() === t.topic.toLowerCase() &&
+                        selectedTopicForQuestions?.sectionName === secGroup.section_name;
                       return (
                         <button
                           key={t.topic}
                           type="button"
                           onClick={() => {
+                            handleInspectTopicQuestions(t.topic, secGroup.section_name);
                             if (isActive) {
                               setSelectedSection('all');
                               setSearchQuery('');
@@ -554,6 +658,258 @@ export const TopicAnalysisPage: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* TOPIC-WISE ANALYSIS TABLE (CLICK ANY TOPIC NAME TO DISPLAY QUESTIONS)     */}
+      {/* ========================================================================= */}
+      <div className="content-card mb-6 border-2 border-indigo-200">
+        <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <div>
+            <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <Layers size={16} className="text-indigo-600" />
+              <span>Topic-Wise Analysis Table ({topicTableRows.length} Topics • {scopedQuestions.length} Total Questions)</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Click any <strong>Topic Name</strong> or <strong>View Questions</strong> button to display all related questions for that topic immediately below.
+            </p>
+          </div>
+          {selectedTopicForQuestions && (
+            <button
+              type="button"
+              onClick={() => setSelectedTopicForQuestions(null)}
+              className="btn btn-secondary btn-sm text-xs"
+            >
+              Close Related Questions ({selectedTopicForQuestions.topic})
+            </button>
+          )}
+        </div>
+
+        <div className="table-responsive">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: '48px' }}>#</th>
+                <th>Topic Name (Click to View Questions)</th>
+                <th>Section</th>
+                <th className="text-center">Questions</th>
+                <th className="text-center">Share %</th>
+                <th>Difficulty Breakdown</th>
+                <th>Question #s</th>
+                <th style={{ width: '140px' }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topicTableRows.map((row, idx) => {
+                const isSelected =
+                  selectedTopicForQuestions?.topic.toLowerCase() === row.topic.toLowerCase() &&
+                  (selectedTopicForQuestions?.sectionName || '') === row.sectionName;
+
+                return (
+                  <tr
+                    key={`${row.sectionName}-${row.topic}-${idx}`}
+                    style={isSelected ? { backgroundColor: '#f0fdfa' } : undefined}
+                  >
+                    <td className="text-xs font-bold text-slate-400">{idx + 1}</td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
+                        className="text-left cursor-pointer"
+                        style={{ background: 'none', border: 'none', padding: 0 }}
+                        title={`Click to display all ${row.count} related question(s) on ${row.topic}`}
+                      >
+                        <div className="font-bold text-sm text-teal-700 flex items-center gap-1" style={{ textDecoration: 'underline' }}>
+                          <span>{row.topic}</span>
+                          {isSelected && (
+                            <span className="text-[10px] bg-teal-600 text-white px-1.5 py-0.5 rounded font-bold" style={{ textDecoration: 'none' }}>
+                              OPEN
+                            </span>
+                          )}
+                        </div>
+                        {row.subtopic && (
+                          <div className="text-[11px] text-slate-500">{row.subtopic}</div>
+                        )}
+                      </button>
+                    </td>
+                    <td>
+                      <span className="text-xs font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                        {row.sectionName}
+                      </span>
+                    </td>
+                    <td className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
+                        className="font-black text-xs bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full cursor-pointer border border-indigo-200"
+                        title={`View ${row.count} questions`}
+                      >
+                        {row.count} Qs
+                      </button>
+                    </td>
+                    <td className="text-center text-xs font-bold text-slate-700">
+                      {row.sharePct}%
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold flex-wrap">
+                        <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">
+                          E: {row.easy}
+                        </span>
+                        <span className="bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">
+                          M: {row.medium}
+                        </span>
+                        <span className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
+                          H: {row.hard}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        {row.questionNumbers.slice(0, 8).map((n) => `Q${n}`).join(', ')}
+                        {row.questionNumbers.length > 8 ? ` +${row.questionNumbers.length - 8} more` : ''}
+                      </div>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => handleInspectTopicQuestions(row.topic, row.sectionName)}
+                        className={`btn btn-sm text-xs flex items-center gap-1 ${
+                          isSelected ? 'btn-teal' : 'btn-indigo'
+                        }`}
+                      >
+                        <span>{isSelected ? 'Viewing' : 'View Questions'}</span>
+                        <ChevronRight size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* RELATED QUESTIONS VIEWER FOR CLICKED TOPIC                                */}
+      {/* ========================================================================= */}
+      {selectedTopicForQuestions && (
+        <div
+          ref={relatedQuestionsRef}
+          className="content-card mb-6 p-5 border-2 border-teal-300 bg-white shadow-md"
+        >
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 mb-4 border-b border-slate-200">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center">
+                <HelpCircle size={18} />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">
+                  Related Questions on Topic: <span className="text-teal-700">{selectedTopicForQuestions.topic}</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Showing <strong>{selectedTopicQuestions.length}</strong> related question(s)
+                  {selectedTopicForQuestions.sectionName ? ` in section "${selectedTopicForQuestions.sectionName}"` : ''}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedTopicForQuestions(null)}
+              className="btn btn-secondary btn-sm flex items-center gap-1 text-xs"
+            >
+              <X size={14} />
+              <span>Close Questions</span>
+            </button>
+          </div>
+
+          {selectedTopicQuestions.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-sm">
+              No related questions found for this topic.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {selectedTopicQuestions.map((q, qIdx) => {
+                const secName = sectionMap[q.section_id] || q.section_name || 'General';
+                return (
+                  <div key={q.id || qIdx} className="question-full-card p-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2 mb-2.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-black text-xs bg-blue-100 text-blue-800 px-2.5 py-1 rounded">
+                          Q{q.question_number || qIdx + 1}
+                        </span>
+                        <span className="text-xs font-bold bg-teal-50 text-teal-800 px-2 py-0.5 rounded border border-teal-200">
+                          {secName}
+                        </span>
+                        <span className="text-xs font-semibold bg-indigo-50 text-indigo-800 px-2 py-0.5 rounded border border-indigo-200">
+                          Topic: {selectedTopicForQuestions.topic}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            q.difficulty === 'hard'
+                              ? 'bg-red-100 text-red-700'
+                              : q.difficulty === 'easy'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {(q.difficulty || 'MEDIUM').toUpperCase()}
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold text-slate-600">
+                        Marks: <strong className="text-emerald-700">+{q.marks || 2}</strong> /{' '}
+                        <strong className="text-red-600">−{q.negative_marks || 0.5}</strong>
+                      </span>
+                    </div>
+
+                    <div className="font-semibold text-sm text-slate-900 mb-3 leading-relaxed">
+                      {q.question_text}
+                    </div>
+
+                    {q.image_url && (
+                      <div className="mb-3">
+                        <img
+                          src={q.image_url}
+                          alt="Question diagram"
+                          style={{ maxHeight: '180px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                      {(q.options || []).map((opt: any) => {
+                        const isCorrect = opt.id === q.correct_option_id;
+                        return (
+                          <div
+                            key={opt.id}
+                            className={`question-option-row ${isCorrect ? 'question-option-correct' : ''}`}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <span className="font-black text-xs">{opt.option_label}.</span>
+                            <span className="flex-1 text-xs font-medium">{opt.option_text}</span>
+                            {isCorrect && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800">
+                                <CheckCircle2 size={13} />
+                                <span>Correct</span>
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {(q.explanation || q.answer_explanation) && (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">
+                        <strong className="text-slate-900">Explanation: </strong>
+                        {q.explanation || q.answer_explanation}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* KPI METRICS */}
       <div className="grid-cards-4 mb-6">
@@ -677,7 +1033,15 @@ export const TopicAnalysisPage: React.FC = () => {
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-slate-900 text-sm">{t.topic}</h3>
+                          <button
+                            type="button"
+                            onClick={() => handleInspectTopicQuestions(t.topic, t.sectionName)}
+                            className="font-bold text-teal-700 text-sm cursor-pointer text-left"
+                            style={{ background: 'none', border: 'none', padding: 0, textDecoration: 'underline' }}
+                            title={`Click to view ${t.questionCount} related questions on ${t.topic}`}
+                          >
+                            {t.topic}
+                          </button>
                           {t.subtopic && (
                             <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
                               {t.subtopic}
@@ -791,8 +1155,18 @@ export const TopicAnalysisPage: React.FC = () => {
                   {filteredTopics.map((t, idx) => (
                     <tr key={idx}>
                       <td>
-                        <div className="font-bold text-slate-900 text-sm">{t.topic}</div>
-                        {t.subtopic && <div className="text-xs text-slate-500">{t.subtopic}</div>}
+                        <button
+                          type="button"
+                          onClick={() => handleInspectTopicQuestions(t.topic, t.sectionName)}
+                          className="text-left cursor-pointer"
+                          style={{ background: 'none', border: 'none', padding: 0 }}
+                          title={`Click to display ${t.questionCount} related questions on ${t.topic}`}
+                        >
+                          <div className="font-bold text-teal-700 text-sm" style={{ textDecoration: 'underline' }}>
+                            {t.topic}
+                          </div>
+                          {t.subtopic && <div className="text-xs text-slate-500">{t.subtopic}</div>}
+                        </button>
                       </td>
                       <td>
                         <span className="text-xs font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
@@ -800,7 +1174,13 @@ export const TopicAnalysisPage: React.FC = () => {
                         </span>
                       </td>
                       <td>
-                        <span className="font-semibold text-xs text-slate-800">{t.questionCount} Qs</span>
+                        <button
+                          type="button"
+                          onClick={() => handleInspectTopicQuestions(t.topic, t.sectionName)}
+                          className="font-bold text-xs bg-indigo-50 text-indigo-800 px-2 py-0.5 rounded-full cursor-pointer border border-indigo-200"
+                        >
+                          {t.questionCount} Qs
+                        </button>
                       </td>
                       <td>
                         <div className="flex items-center gap-2">
