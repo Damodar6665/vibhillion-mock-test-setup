@@ -1300,7 +1300,7 @@ export default function ExamResultScreen() {
 
               return (
                 <View key={qKey} style={styles.reviewAccordionItem}>
-                  {/* Collapsed Header */}
+                  {/* Question Header */}
                   <TouchableOpacity
                     style={styles.reviewHeaderRow}
                     activeOpacity={0.8}
@@ -1317,7 +1317,10 @@ export default function ExamResultScreen() {
                             : { backgroundColor: '#94A3B8' },
                         ]}
                       />
-                      <Text style={styles.reviewHeaderQuestionTitle} numberOfLines={1}>
+                      <Text
+                        style={styles.reviewHeaderQuestionTitle}
+                        numberOfLines={isExpanded ? undefined : 2}
+                      >
                         Q{sol.question_number}. {sol.question_text}
                       </Text>
                     </View>
@@ -1328,48 +1331,48 @@ export default function ExamResultScreen() {
                     />
                   </TouchableOpacity>
 
-                  {/* Expanded Content */}
-                  {isExpanded && (
-                    <View style={styles.reviewExpandedBody}>
-                      <Text style={styles.expandedQuestionFullText}>
-                        {sol.question_text}
-                      </Text>
+                  {/* Options List — ALWAYS displayed for every question from JSON format */}
+                  {Array.isArray(sol.options) && sol.options.length > 0 && (
+                    <View style={[styles.reviewOptionsList, { paddingHorizontal: 14, paddingBottom: isExpanded ? 4 : 12, paddingTop: 2 }]}>
+                      {sol.options.map((opt: any, optIdx: number) => {
+                        const isCorrectOpt = opt.id === correctId;
+                        const isUserPicked = opt.id === userSelected;
+                        const optLabel = opt.label || opt.option_label || String.fromCharCode(65 + optIdx);
+                        const optText = opt.text || opt.option_text || '';
 
-                      {/* Options List */}
-                      <View style={styles.reviewOptionsList}>
-                        {sol.options?.map((opt) => {
-                          const isCorrectOpt = opt.id === correctId;
-                          const isUserPicked = opt.id === userSelected;
-
-                          return (
-                            <View
-                              key={opt.id}
+                        return (
+                          <View
+                            key={opt.id || `${qKey}-opt-${optIdx}`}
+                            style={[
+                              styles.reviewOptionBox,
+                              isCorrectOpt && styles.reviewOptionCorrect,
+                              isUserPicked && !isCorrectOpt && styles.reviewOptionWrong,
+                            ]}
+                          >
+                            <Text
                               style={[
-                                styles.reviewOptionBox,
-                                isCorrectOpt && styles.reviewOptionCorrect,
-                                isUserPicked && !isCorrectOpt && styles.reviewOptionWrong,
+                                styles.reviewOptionLetter,
+                                isCorrectOpt && { color: '#059669', fontWeight: '800' },
+                                isUserPicked && !isCorrectOpt && { color: '#DC2626' },
                               ]}
                             >
-                              <Text
-                                style={[
-                                  styles.reviewOptionLetter,
-                                  isCorrectOpt && { color: '#059669', fontWeight: '800' },
-                                  isUserPicked && !isCorrectOpt && { color: '#DC2626' },
-                                ]}
-                              >
-                                {opt.label}. {opt.text}
-                              </Text>
-                              {isCorrectOpt && (
-                                <Ionicons name="checkmark-circle" size={18} color="#059669" />
-                              )}
-                              {isUserPicked && !isCorrectOpt && (
-                                <Ionicons name="close-circle" size={18} color="#DC2626" />
-                              )}
-                            </View>
-                          );
-                        })}
-                      </View>
+                              {optLabel}. {optText}
+                            </Text>
+                            {isCorrectOpt && (
+                              <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                            )}
+                            {isUserPicked && !isCorrectOpt && (
+                              <Ionicons name="close-circle" size={18} color="#DC2626" />
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
 
+                  {/* Expanded Content (Explanation, Steps & Topic Analysis) */}
+                  {isExpanded && (
+                    <View style={styles.reviewExpandedBody}>
                       {/* Explanation Callout Box */}
                       {sol.explanation && (
                         <View style={styles.explanationBox}>

@@ -36,6 +36,7 @@ import {
   distributeQuestionsAcrossSections,
   inferQuestionTopic,
   buildSectionTopicAnalysis,
+  normalizeQuestionOptions,
   SectionAllocationConfig,
   DistributionMode,
 } from '../utils/questionDistributor';
@@ -1689,6 +1690,8 @@ export const QuestionsPage: React.FC = () => {
                   const hasOptionImages = q.options?.some((o: any) => Boolean(o.image_url));
                   const secName = sections.find((s) => s.id === q.section_id)?.name || '';
                   const resolvedTopic = inferQuestionTopic(q.question_text || '', secName, q.topic, q.subtopic);
+                  const { options: displayOpts, correct_option_id: resolvedCorrectId } =
+                    normalizeQuestionOptions(q, q.id);
 
                   return (
                     <tr key={q.id}>
@@ -1738,29 +1741,35 @@ export const QuestionsPage: React.FC = () => {
                       </td>
                       <td>
                         <div className="space-y-1">
-                          {q.options?.map((opt: any) => {
-                            const isCorrect = opt.id === q.correct_option_id;
-                            return (
-                              <div
-                                key={opt.id}
-                                className={`text-[11px] px-2 py-0.5 rounded flex items-center justify-between gap-1 ${
-                                  isCorrect
-                                    ? 'bg-emerald-100 text-emerald-900 font-bold border border-emerald-300'
-                                    : 'text-slate-600'
-                                }`}
-                              >
-                                <span>
-                                  {opt.option_label}: {opt.option_text}
-                                </span>
-                                {opt.image_url && (
-                                  <span title="Option has image">
-                                    <ImageIcon size={10} className="text-purple-600" />
+                          {displayOpts.length > 0 ? (
+                            displayOpts.map((opt) => {
+                              const isCorrect = opt.id === (resolvedCorrectId || q.correct_option_id);
+                              return (
+                                <div
+                                  key={opt.id}
+                                  className={`text-[11px] px-2 py-0.5 rounded flex items-center justify-between gap-1 ${
+                                    isCorrect
+                                      ? 'bg-emerald-100 text-emerald-900 font-bold border border-emerald-300'
+                                      : 'text-slate-600'
+                                  }`}
+                                >
+                                  <span>
+                                    {opt.option_label}: {opt.option_text}
                                   </span>
-                                )}
-                                {isCorrect && <CheckCircle2 size={12} className="text-emerald-700" />}
-                              </div>
-                            );
-                          })}
+                                  {opt.image_url && (
+                                    <span title="Option has image">
+                                      <ImageIcon size={10} className="text-purple-600" />
+                                    </span>
+                                  )}
+                                  {isCorrect && <CheckCircle2 size={12} className="text-emerald-700" />}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block">
+                              No options stored — re-upload JSON or click Edit
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td>
@@ -2126,6 +2135,49 @@ export const QuestionsPage: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+
+                  {/* JSON Options Detection Preview */}
+                  {bulkPreview.result.assignedQuestions.length > 0 && (() => {
+                    const withOptsCount = bulkPreview.result!.assignedQuestions.filter(
+                      (q: any) => Array.isArray(q.options) && q.options.length > 0
+                    ).length;
+                    const sampleQ = bulkPreview.result!.assignedQuestions[0];
+                    return (
+                      <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className="font-bold text-slate-800">
+                            JSON Options Detected:{' '}
+                            <span className={withOptsCount > 0 ? 'text-emerald-700' : 'text-amber-700'}>
+                              {withOptsCount} / {bulkPreview.result!.assignedQuestions.length} Questions
+                            </span>
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            Supports <code>options: [...]</code>, <code>options: &#123;A..D&#125;</code>, <code>option_a..d</code>, <code>a..d</code>
+                          </span>
+                        </div>
+                        {sampleQ && Array.isArray(sampleQ.options) && sampleQ.options.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {sampleQ.options.map((opt: any) => {
+                              const isAns = opt.id === sampleQ.correct_option_id;
+                              return (
+                                <span
+                                  key={opt.id}
+                                  className={`px-2 py-0.5 rounded text-[11px] border ${
+                                    isAns
+                                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
+                                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  {opt.option_label}. {opt.option_text}
+                                  {isAns ? ' ✓' : ''}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

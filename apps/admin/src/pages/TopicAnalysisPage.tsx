@@ -37,6 +37,7 @@ import {
 import {
   inferQuestionTopic,
   buildSectionTopicAnalysis,
+  normalizeQuestionOptions,
 } from '../utils/questionDistributor';
 
 interface TopicRow {
@@ -990,6 +991,8 @@ export const TopicAnalysisPage: React.FC = () => {
             <div className="space-y-4">
               {selectedTopicQuestions.map((q, qIdx) => {
                 const secName = sectionMap[q.section_id] || q.section_name || 'General';
+                const { options: normalizedOpts, correct_option_id: resolvedCorrectId } =
+                  normalizeQuestionOptions(q, q.id || `q-${qIdx}`);
                 return (
                   <div key={q.id || qIdx} className="question-full-card p-4">
                     <div className="flex items-center justify-between flex-wrap gap-2 mb-2.5">
@@ -1035,27 +1038,43 @@ export const TopicAnalysisPage: React.FC = () => {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-                      {(q.options || []).map((opt: any) => {
-                        const isCorrect = opt.id === q.correct_option_id;
-                        return (
-                          <div
-                            key={opt.id}
-                            className={`question-option-row ${isCorrect ? 'question-option-correct' : ''}`}
-                            style={{ marginBottom: 0 }}
-                          >
-                            <span className="font-black text-xs">{opt.option_label}.</span>
-                            <span className="flex-1 text-xs font-medium">{opt.option_text}</span>
-                            {isCorrect && (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800">
-                                <CheckCircle2 size={13} />
-                                <span>Correct</span>
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {normalizedOpts.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                        {normalizedOpts.map((opt) => {
+                          const isCorrect = opt.id === (resolvedCorrectId || q.correct_option_id);
+                          return (
+                            <div
+                              key={opt.id}
+                              className={`question-option-row ${isCorrect ? 'question-option-correct' : ''}`}
+                              style={{ marginBottom: 0 }}
+                            >
+                              <span className="font-black text-xs">{opt.option_label}.</span>
+                              <span className="flex-1 text-xs font-medium">{opt.option_text}</span>
+                              {opt.image_url && (
+                                <img
+                                  src={opt.image_url}
+                                  alt={`Option ${opt.option_label}`}
+                                  style={{ maxHeight: '36px', borderRadius: '4px' }}
+                                />
+                              )}
+                              {isCorrect && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800">
+                                  <CheckCircle2 size={13} />
+                                  <span>Correct</span>
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="mb-3 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                        <strong>Options not found on this stored question:</strong> Re-upload your JSON file in{' '}
+                        <strong>Questions → Bulk Upload JSON</strong> (supports{' '}
+                        <code>options: [...]</code>, <code>options: &#123;A,B,C,D&#125;</code>,{' '}
+                        <code>option_a..option_d</code>, or <code>a..d</code>).
+                      </div>
+                    )}
 
                     {(q.explanation || q.answer_explanation) && (
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700">

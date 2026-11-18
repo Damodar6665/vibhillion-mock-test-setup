@@ -362,7 +362,6 @@ function liveSyncApiPlugin(): Plugin {
             return res.end(JSON.stringify({ error: 'No valid questions array found in JSON payload.' }));
           }
 
-          const labels = ['A', 'B', 'C', 'D'];
           const targetExamId =
             body.exam_id ||
             rawQuestions[0]?.exam_id ||
@@ -421,44 +420,156 @@ function liveSyncApiPlugin(): Plugin {
               secId = matchedSec ? matchedSec.id : defaultSectionId;
             }
 
-            // Options mapping with image support
-            let opts = item.options || [];
-            if (Array.isArray(opts)) {
-              opts = opts.map((opt: any, oIdx: number) => {
-                const optText = typeof opt === 'string' ? opt : (opt.option_text || opt.text || '');
-                const optImg = typeof opt === 'object' ? (opt.image_url || null) : null;
-                const optId = (typeof opt === 'object' && opt.id) ? opt.id : `opt-${qId}-${oIdx}`;
-                const optLabel = (typeof opt === 'object' && (opt.option_label || opt.label)) || labels[oIdx] || `${oIdx + 1}`;
-                return {
-                  id: optId,
-                  question_id: qId,
-                  option_label: optLabel,
-                  option_text: optText,
-                  image_url: optImg,
-                  display_order: oIdx + 1,
-                };
-              });
-            } else {
-              opts = labels.map((lbl, oIdx) => ({
-                id: `opt-${qId}-${oIdx}`,
-                question_id: qId,
-                option_label: lbl,
-                option_text: `Option ${lbl}`,
-                image_url: null,
-                display_order: oIdx + 1,
-              }));
+            // Universal JSON Options mapping (array of objects, string[], object map {A..D}/{a..d}/{1..4}, flat option_a..d/a..d/choices)
+            const defaultLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+            let rawOptSource: any =
+              item.options ?? item.choices ?? item.answers ?? item.answer_options ?? item.option_list ?? null;
+            if (typeof rawOptSource === 'string') {
+              const t = rawOptSource.trim();
+              if (t.startsWith('[') || t.startsWith('{')) {
+                try { rawOptSource = JSON.parse(t); } catch { rawOptSource = null; }
+              } else {
+                rawOptSource = null;
+              }
             }
 
-            // Correct Option identification
-            let correctOptId = item.correct_option_id;
-            if (!correctOptId) {
-              if (item.correct_option_label) {
-                const found = opts.find((o: any) => o.option_label.toUpperCase() === item.correct_option_label.toUpperCase());
-                if (found) correctOptId = found.id;
-              } else if (item.correct_index !== undefined && opts[item.correct_index]) {
-                correctOptId = opts[item.correct_index].id;
-              } else if (item.correctOptionIndex !== undefined && opts[item.correctOptionIndex]) {
-                correctOptId = opts[item.correctOptionIndex].id;
+            let opts: any[] = [];
+            let markedCorrectFromObj: string | undefined;
+
+            if (Array.isArray(rawOptSource) && rawOptSource.length > 0) {
+              opts = rawOptSource
+                .map((opt: any, oIdx: number) => {
+                  if (opt === null || opt === undefined) return null;
+                  if (typeof opt === 'string' || typeof opt === 'number') {
+                    return {
+                      id: `opt-${qId}-${oIdx}`,
+                      question_id: qId,
+                      option_label: defaultLabels[oIdx] || `${oIdx + 1}`,
+                      option_text: String(opt).trim(),
+                      image_url: null,
+                      display_order: oIdx + 1,
+                    };
+                  }
+                  if (typeof opt === 'object') {
+                    const optId = opt.id || `opt-${qId}-${oIdx}`;
+                    const rawLbl = opt.option_label ?? opt.label ?? opt.key ?? opt.letter ?? opt.code;
+                    const optLabel = rawLbl
+                      ? String(rawLbl).replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || defaultLabels[oIdx]
+                      : (defaultLabels[oIdx] || `${oIdx + 1}`);
+                    const optText = String(
+                      opt.option_text ?? opt.text ?? opt.value ?? opt.content ?? opt.option ?? opt.title ?? opt.answer ?? opt.name ?? ''
+                    ).trim();
+                    const optImg = opt.image_url || opt.image || null;
+                    if (opt.is_correct === true || opt.isCorrect === true || opt.correct === true) {
+                      markedCorrectFromObj = optId;
+                    }
+                    return {
+                      id: optId,
+                      question_id: qId,
+                      option_label: optLabel,
+                      option_text: optText,
+                      image_url: optImg,
+                      display_order: Number(opt.display_order) || oIdx + 1,
+                    };
+                  }
+                  return null;
+                })
+                .filter((x: any) => Boolean(x && (x.option_text || x.image_url)));
+            } else if (rawOptSource && typeof rawOptSource === 'object' && !Array.isArray(rawOptSource)) {
+              opts = Object.entries(rawOptSource)
+                .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+                .map(([rawKey, rawVal]: [string, any], oIdx: number) => {
+                  const cleanedKey = rawKey.replace(/^(option|opt|choice)[_\-\s]*/i, '').trim().toUpperCase();
+                  const optLabel =
+                    /^[A-F]$/.test(cleanedKey)
+                      ? cleanedKey
+                      : /^[1-6]$/.test(cleanedKey)
+                      ? defaultLabels[Number(cleanedKey) - 1]
+                      : (defaultLabels[oIdx] || `${oIdx + 1}`);
+                  const isObjVal = typeof rawVal === 'object' && rawVal !== null;
+                  const optId = (isObjVal && rawVal.id) || `opt-${qId}-${oIdx}`;
+                  const optText = isObjVal
+                    ? String(rawVal.option_text ?? rawVal.text ?? rawVal.value ?? rawVal.content ?? '').trim()
+                    : String(rawVal).trim();
+                  if (isObjVal && (rawVal.is_correct === true || rawVal.isCorrect === true)) {
+                    markedCorrectFromObj = optId;
+                  }
+                  return {
+                    id: optId,
+                    question_id: qId,
+                    option_label: optLabel,
+                    option_text: optText,
+                    image_url: isObjVal ? (rawVal.image_url || rawVal.image || null) : null,
+                    display_order: oIdx + 1,
+                  };
+                });
+            }
+
+            if (opts.length === 0) {
+              const flatGroups = [
+                [['option_a', 'A'], ['option_b', 'B'], ['option_c', 'C'], ['option_d', 'D'], ['option_e', 'E']],
+                [['optionA', 'A'], ['optionB', 'B'], ['optionC', 'C'], ['optionD', 'D'], ['optionE', 'E']],
+                [['option_1', 'A'], ['option_2', 'B'], ['option_3', 'C'], ['option_4', 'D']],
+                [['option1', 'A'], ['option2', 'B'], ['option3', 'C'], ['option4', 'D']],
+                [['opt_a', 'A'], ['opt_b', 'B'], ['opt_c', 'C'], ['opt_d', 'D']],
+                [['optA', 'A'], ['optB', 'B'], ['optC', 'C'], ['optD', 'D']],
+                [['choice_a', 'A'], ['choice_b', 'B'], ['choice_c', 'C'], ['choice_d', 'D']],
+                [['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']],
+                [['a', 'A'], ['b', 'B'], ['c', 'C'], ['d', 'D']],
+              ];
+              for (const grp of flatGroups) {
+                const matched = grp.filter(([k]) => item[k] !== undefined && item[k] !== null && String(item[k]).trim() !== '');
+                if (matched.length >= 2) {
+                  opts = matched.map(([k, lbl], oIdx) => ({
+                    id: `opt-${qId}-${oIdx}`,
+                    question_id: qId,
+                    option_label: lbl,
+                    option_text: String(item[k]).trim(),
+                    image_url: null,
+                    display_order: oIdx + 1,
+                  }));
+                  break;
+                }
+              }
+            }
+
+            // Correct Option identification across all common JSON answer keys
+            let correctOptId = markedCorrectFromObj || (item.correct_option_id && opts.some((o: any) => o.id === item.correct_option_id) ? item.correct_option_id : undefined);
+            if (!correctOptId && opts.length > 0) {
+              const rawAns =
+                item.correct_option_label ??
+                item.correct_label ??
+                item.correct_option ??
+                item.correctOption ??
+                item.correct_answer ??
+                item.correctAnswer ??
+                item.answer ??
+                item.ans ??
+                item.correct ??
+                item.right_option ??
+                item.right_answer;
+
+              if (rawAns !== undefined && rawAns !== null && String(rawAns).trim() !== '') {
+                const ansStr = String(rawAns).trim();
+                const cleanedLetter = ansStr
+                  .replace(/^(option|opt|choice|ans|answer)[\s:\-_.]*/i, '')
+                  .replace(/[()[\].:\s]/g, '')
+                  .toUpperCase();
+                const byLabel = opts.find((o: any) => o.option_label.toUpperCase() === cleanedLetter);
+                if (byLabel) {
+                  correctOptId = byLabel.id;
+                } else if (/^[1-6]$/.test(cleanedLetter) && opts[Number(cleanedLetter) - 1]) {
+                  correctOptId = opts[Number(cleanedLetter) - 1].id;
+                } else {
+                  const byText = opts.find((o: any) => o.option_text.toLowerCase() === ansStr.toLowerCase());
+                  if (byText) correctOptId = byText.id;
+                }
+              }
+            }
+            if (!correctOptId && opts.length > 0) {
+              const rawIdx = item.correct_index ?? item.correctOptionIndex ?? item.answer_index;
+              if (rawIdx !== undefined && rawIdx !== null && opts[Number(rawIdx)]) {
+                correctOptId = opts[Number(rawIdx)].id;
               } else {
                 correctOptId = opts[0]?.id;
               }
@@ -469,7 +580,7 @@ function liveSyncApiPlugin(): Plugin {
               exam_id: targetExamId,
               section_id: secId,
               question_number: Number(item.question_number) || (existingExamQuestions.length + idx + 1),
-              question_text: item.question_text || item.text || 'Untitled Question',
+              question_text: item.question_text || item.question || item.text || item.statement || item.prompt || 'Untitled Question',
               question_type: item.question_type || 'single_choice',
               difficulty: item.difficulty || 'medium',
               topic: item.topic || 'General Topic',

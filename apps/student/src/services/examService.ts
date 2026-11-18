@@ -596,6 +596,181 @@ const MOCK_CORRECT_MAPPING: Record<string, string> = {
   'b0000004-0000-0000-0000-000000000005': 'o77',
 };
 
+// Universal JSON Options normalizer for student web/mobile
+function normalizeJsonQuestionOptions(q: any): {
+  options: Array<{
+    id: string;
+    question_id: string;
+    option_label: string;
+    option_text: string;
+    label: string;
+    text: string;
+    image_url: string | null;
+    display_order: number;
+  }>;
+  correct_option_id?: string;
+} {
+  const qId = q?.id || `q-${q?.question_number || 1}`;
+  const defaultLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+  let rawSource: any =
+    q?.options ?? q?.choices ?? q?.answers ?? q?.answer_options ?? q?.option_list ?? null;
+  if (typeof rawSource === 'string') {
+    const t = rawSource.trim();
+    if (t.startsWith('[') || t.startsWith('{')) {
+      try {
+        rawSource = JSON.parse(t);
+      } catch {
+        rawSource = null;
+      }
+    } else {
+      rawSource = null;
+    }
+  }
+
+  let normalized: Array<{
+    id: string;
+    question_id: string;
+    option_label: string;
+    option_text: string;
+    label: string;
+    text: string;
+    image_url: string | null;
+    display_order: number;
+  }> = [];
+  let markedCorrect: string | undefined;
+
+  if (Array.isArray(rawSource) && rawSource.length > 0) {
+    normalized = rawSource
+      .map((opt: any, idx: number) => {
+        if (opt === null || opt === undefined) return null;
+        if (typeof opt === 'string' || typeof opt === 'number') {
+          const lbl = defaultLabels[idx] || String(idx + 1);
+          const txt = String(opt).trim();
+          return {
+            id: `opt-${qId}-${idx}`,
+            question_id: qId,
+            option_label: lbl,
+            option_text: txt,
+            label: lbl,
+            text: txt,
+            image_url: null,
+            display_order: idx + 1,
+          };
+        }
+        if (typeof opt === 'object') {
+          const optId = opt.id || `opt-${qId}-${idx}`;
+          const rawLbl = opt.option_label ?? opt.label ?? opt.key ?? opt.letter ?? opt.code;
+          const lbl = rawLbl
+            ? String(rawLbl).replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || defaultLabels[idx]
+            : defaultLabels[idx] || String(idx + 1);
+          const txt = String(
+            opt.option_text ?? opt.text ?? opt.value ?? opt.content ?? opt.option ?? opt.title ?? opt.answer ?? opt.name ?? ''
+          ).trim();
+          if (opt.is_correct === true || opt.isCorrect === true || opt.correct === true) {
+            markedCorrect = optId;
+          }
+          return {
+            id: optId,
+            question_id: qId,
+            option_label: lbl,
+            option_text: txt,
+            label: lbl,
+            text: txt,
+            image_url: opt.image_url || opt.image || null,
+            display_order: Number(opt.display_order) || idx + 1,
+          };
+        }
+        return null;
+      })
+      .filter((x): x is NonNullable<typeof x> => Boolean(x && (x.option_text || x.image_url)));
+  } else if (rawSource && typeof rawSource === 'object' && !Array.isArray(rawSource)) {
+    normalized = Object.entries(rawSource)
+      .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+      .map(([rawKey, rawVal], idx) => {
+        const cleanedKey = rawKey.replace(/^(option|opt|choice)[_\-\s]*/i, '').trim().toUpperCase();
+        const lbl = /^[A-F]$/.test(cleanedKey)
+          ? cleanedKey
+          : /^[1-6]$/.test(cleanedKey)
+          ? defaultLabels[Number(cleanedKey) - 1]
+          : defaultLabels[idx] || String(idx + 1);
+        const isObj = typeof rawVal === 'object' && rawVal !== null;
+        const optId = (isObj && (rawVal as any).id) || `opt-${qId}-${idx}`;
+        const txt = isObj
+          ? String((rawVal as any).option_text ?? (rawVal as any).text ?? (rawVal as any).value ?? '').trim()
+          : String(rawVal).trim();
+        if (isObj && ((rawVal as any).is_correct === true || (rawVal as any).isCorrect === true)) {
+          markedCorrect = optId;
+        }
+        return {
+          id: optId,
+          question_id: qId,
+          option_label: lbl,
+          option_text: txt,
+          label: lbl,
+          text: txt,
+          image_url: isObj ? ((rawVal as any).image_url || null) : null,
+          display_order: idx + 1,
+        };
+      });
+  }
+
+  if (normalized.length === 0 && q && typeof q === 'object') {
+    const flatGroups = [
+      [['option_a', 'A'], ['option_b', 'B'], ['option_c', 'C'], ['option_d', 'D'], ['option_e', 'E']],
+      [['optionA', 'A'], ['optionB', 'B'], ['optionC', 'C'], ['optionD', 'D'], ['optionE', 'E']],
+      [['option_1', 'A'], ['option_2', 'B'], ['option_3', 'C'], ['option_4', 'D']],
+      [['option1', 'A'], ['option2', 'B'], ['option3', 'C'], ['option4', 'D']],
+      [['opt_a', 'A'], ['opt_b', 'B'], ['opt_c', 'C'], ['opt_d', 'D']],
+      [['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']],
+      [['a', 'A'], ['b', 'B'], ['c', 'C'], ['d', 'D']],
+    ];
+    for (const grp of flatGroups) {
+      const matched = grp.filter(([k]) => q[k] !== undefined && q[k] !== null && String(q[k]).trim() !== '');
+      if (matched.length >= 2) {
+        normalized = matched.map(([k, lbl], idx) => {
+          const txt = String(q[k]).trim();
+          return {
+            id: `opt-${qId}-${idx}`,
+            question_id: qId,
+            option_label: lbl,
+            option_text: txt,
+            label: lbl,
+            text: txt,
+            image_url: null,
+            display_order: idx + 1,
+          };
+        });
+        break;
+      }
+    }
+  }
+
+  let correctId = markedCorrect || (q?.correct_option_id && normalized.some((o) => o.id === q.correct_option_id) ? q.correct_option_id : undefined);
+  if (!correctId && normalized.length > 0) {
+    const rawAns =
+      q?.correct_option_label ??
+      q?.correct_label ??
+      q?.correct_option ??
+      q?.correct_answer ??
+      q?.answer ??
+      q?.ans;
+    if (rawAns !== undefined && rawAns !== null && String(rawAns).trim() !== '') {
+      const ansStr = String(rawAns).trim();
+      const cleaned = ansStr.replace(/^(option|opt|choice|ans|answer)[\s:\-_.]*/i, '').replace(/[()[\].:\s]/g, '').toUpperCase();
+      const byLbl = normalized.find((o) => o.option_label.toUpperCase() === cleaned);
+      if (byLbl) correctId = byLbl.id;
+      else if (/^[1-6]$/.test(cleaned) && normalized[Number(cleaned) - 1]) correctId = normalized[Number(cleaned) - 1].id;
+      else {
+        const byTxt = normalized.find((o) => o.option_text.toLowerCase() === ansStr.toLowerCase());
+        if (byTxt) correctId = byTxt.id;
+      }
+    }
+  }
+
+  return { options: normalized, correct_option_id: correctId || q?.correct_option_id };
+}
+
 export const examService = {
   /**
    * Fetch active categories
@@ -810,11 +985,21 @@ export const examService = {
       allQuestions = FULL_100_QUESTIONS;
     }
 
+    // Normalize options across any JSON format (array, object {A..D}, flat option_a..d / a..d)
+    const normalizedQuestions = allQuestions.map((q: any) => {
+      const { options: normOpts, correct_option_id: normCorrect } = normalizeJsonQuestionOptions(q);
+      return {
+        ...q,
+        options: normOpts.length > 0 ? normOpts : (q.options || []),
+        correct_option_id: normCorrect || q.correct_option_id,
+      };
+    });
+
     if (!sectionId || sectionId === 'all') {
-      return allQuestions;
+      return normalizedQuestions;
     }
-    const filtered = allQuestions.filter((q) => q.section_id === sectionId);
-    return filtered.length > 0 ? filtered : allQuestions;
+    const filtered = normalizedQuestions.filter((q) => q.section_id === sectionId);
+    return filtered.length > 0 ? filtered : normalizedQuestions;
   },
 
   /**
@@ -1050,9 +1235,11 @@ export const examService = {
     const answers = localAnswers || {};
 
     return pool.map((q: any) => {
+      const { options: normalizedOpts, correct_option_id: normalizedCorrectId } =
+        normalizeJsonQuestionOptions(q);
       const ans = answers[q.id];
       const selectedId = ans?.optionId || null;
-      const correctId = q.correct_option_id || FULL_100_CORRECT_MAPPING[q.id];
+      const correctId = normalizedCorrectId || q.correct_option_id || FULL_100_CORRECT_MAPPING[q.id];
       const isCorrect = selectedId === correctId;
       const marks = selectedId ? (isCorrect ? (Number(q.marks) || 2.0) : -(Number(q.negative_marks) || 0.5)) : 0;
       const sec = sections.find((s) => s.id === q.section_id);
@@ -1068,10 +1255,10 @@ export const examService = {
         negative_marks: q.negative_marks,
         section_id: q.section_id,
         section_name: sec?.name || 'Section',
-        options: (q.options || []).map((o: any) => ({
+        options: normalizedOpts.map((o) => ({
           id: o.id,
-          label: o.option_label || o.label,
-          text: o.option_text || o.text,
+          label: o.label || o.option_label,
+          text: o.text || o.option_text,
           image_url: o.image_url || null,
           display_order: o.display_order,
         })),
